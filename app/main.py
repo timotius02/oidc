@@ -1,8 +1,11 @@
 from fastapi import FastAPI
 
-from app.jwt import create_access_token
+from app.routes import auth
+from app.services.jwt import create_access_token
 
 app = FastAPI()
+
+app.include_router(auth.router)
 
 @app.get("/")
 def root():

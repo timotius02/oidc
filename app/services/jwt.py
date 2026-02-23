@@ -1,6 +1,6 @@
 from jose import jwt
 from datetime import datetime, timedelta
-from .config import settings
+from ..config import settings
 
 with open(settings.PRIVATE_KEY_PATH) as f:
     PRIVATE_KEY = f.read()
