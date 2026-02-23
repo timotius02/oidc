@@ -1,10 +1,16 @@
 from fastapi import FastAPI
+from starlette.middleware.sessions import SessionMiddleware
 
 from app.routes import auth
 from app.services.jwt import create_access_token
 from app.oauth.routes import router as oauth_router
 
 app = FastAPI()
+
+app.add_middleware(
+    SessionMiddleware,
+    secret_key="dev-secret-session",
+)
 
 app.include_router(auth.router)
 app.include_router(oauth_router)

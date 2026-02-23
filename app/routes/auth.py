@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request, Form
+from fastapi.params import Query
+from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.db import get_db
@@ -28,19 +30,36 @@ def register(data: UserCreate, db: Session = Depends(get_db)):
     return {"id": user.id, "email": user.email}
 
 
-@router.post("/login")
-def login(data: UserLogin, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.email == data.email).first()
+@router.get("/login", response_class=HTMLResponse)
+def login_page(next: str = Query("/")):  # default redirect is "/"
+    return f"""
+    <html>
+        <body>
+            <h2>Login</h2>
+            <form method="post" action="/auth/login">
+                <input name="email" placeholder="Email" />
+                <input name="password" type="password" placeholder="Password" />
+                <input type="hidden" name="next" value="{next}" />
+                <button type="submit">Login</button>
+            </form>
+        </body>
+    </html>
+    """
 
-    if not user or not verify_password(data.password, user.password_hash):
+@router.post("/login")
+def login(
+    request: Request,
+    email: str = Form(...),
+    password: str = Form(...),
+    next: str = Form("/"),  # get from the hidden input
+    db: Session = Depends(get_db),
+):
+    user = db.query(User).filter(User.email == email).first()
+
+    if not user or not verify_password(password, user.password_hash):
         raise HTTPException(401, "Invalid credentials")
 
-    access_token = create_access_token(
-        sub=user.id,
-        audience="example-client",
-    )
+    request.session["user_id"] = str(user.id)
 
-    return {
-        "access_token": access_token,
-        "token_type": "Bearer",
-    }
+    # Redirect to the next page (authorize or default)
+    return RedirectResponse(next, status_code=302)
