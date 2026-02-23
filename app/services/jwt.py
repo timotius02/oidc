@@ -9,12 +9,12 @@ with open(settings.PUBLIC_KEY_PATH) as f:
     PUBLIC_KEY = f.read()
 
 
-def create_access_token(sub: str, audience: str):
+def create_access_token(subject: str, audience: str):
     now = datetime.utcnow()
 
     payload = {
         "iss": settings.JWT_ISSUER,
-        "sub": sub,
+        "sub": subject,
         "aud": audience,
         "iat": now,
         "exp": now + timedelta(seconds=settings.ACCESS_TOKEN_EXPIRE_SECONDS),
