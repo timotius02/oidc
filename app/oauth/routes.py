@@ -167,22 +167,7 @@ def authorize(
             state=state
         )
 
-    # Check user authentication
-    user = get_current_user(request, db)
-    if not user:
-        # Store params in session for post-login redirect
-        request.session["authorize_params"] = {
-            "client_id": client_id,
-            "redirect_uri": redirect_uri,
-            "response_type": response_type,
-            "scope": scope,
-            "state": state,
-            "nonce": nonce,
-        }
-        login_url = "/auth/login?next=/oauth/authorize"
-        return RedirectResponse(login_url)
-
-    # Store params in session for consent flow
+    # Store the validated parameters in session for use in consent flow and post-login redirect
     request.session["authorize_params"] = {
         "client_id": client_id,
         "redirect_uri": redirect_uri,
@@ -192,7 +177,12 @@ def authorize(
         "nonce": nonce,
     }
 
-    # Redirect to consent screen
+    # Check user authentication
+    user = get_current_user(request, db)
+    if not user:
+        login_url = "/auth/login?next=/oauth/authorize"
+        return RedirectResponse(login_url)
+
     return RedirectResponse("/oauth/consent")
 
 
