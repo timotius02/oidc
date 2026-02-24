@@ -173,3 +173,31 @@ def create_token_error_response(
             "Pragma": "no-cache"
         }
     )
+
+
+def register_oauth_exception_handlers(app) -> None:
+    """
+    Register OAuth exception handlers with the FastAPI application.
+
+    This function registers the OAuthError exception handler, keeping
+    OAuth-specific error handling logic within the oauth module for
+    better domain encapsulation.
+
+    Args:
+        app: The FastAPI application instance
+
+    Example:
+        >>> from fastapi import FastAPI
+        >>> from app.oauth.errors import register_exception_handlers
+        >>> app = FastAPI()
+        >>> register_exception_handlers(app)
+    """
+
+    @app.exception_handler(OAuthError)
+    async def oauth_error_handler(request, exc: OAuthError):
+        """Handle OAuth errors and return proper error responses."""
+        return create_token_error_response(
+            error_code=exc.error_code,
+            description=exc.description,
+            uri=exc.uri
+        )
