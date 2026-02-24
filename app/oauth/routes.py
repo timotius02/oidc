@@ -3,6 +3,7 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.oauth.errors import OAuthErrorCode, create_authorization_error_response
 from app.oauth.service import create_authorization_code, exchange_code_for_token
 from app.oauth.utils import get_current_user
 
@@ -19,6 +20,13 @@ def authorize(
     state: str,
     db: Session = Depends(get_db),
 ):
+    if response_type != "code":
+        return create_authorization_error_response(
+            redirect_uri=redirect_uri,
+            error_code=OAuthErrorCode.UNSUPPORTED_RESPONSE_TYPE,
+            description="The authorization server only supports 'code' response type",
+            state=state
+        )
     user = get_current_user(request, db)
     if not user:
         # Redirect to login with "next" parameter back to /authorize
