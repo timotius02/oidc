@@ -9,14 +9,14 @@ Usage:
     python -m app.scripts.create_tables
 
     # To apply schema changes, drop tables first:
-    # In PostgreSQL: DROP TABLE oauth_clients; DROP TABLE authorization_codes; DROP TABLE users;
+    # In PostgreSQL: DROP TABLE oauth_clients; DROP TABLE authorization_codes;
+    # DROP TABLE users;
     # Then run this script again.
 """
+
 from app.db import Base, engine
 
 # Import ALL models so SQLAlchemy registers them
-from app.models.user import User
-from app.oauth import models as oauth_models
 
 
 def main():

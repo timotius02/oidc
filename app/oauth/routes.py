@@ -1,12 +1,16 @@
 import secrets
 from typing import Optional
+
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.templates_config import templates
-from app.oauth.errors import OAuthErrorCode, OAuthError, create_authorization_error_response
+from app.oauth.errors import (
+    OAuthError,
+    OAuthErrorCode,
+    create_authorization_error_response,
+)
 from app.oauth.models import OAuthClient
 from app.oauth.service import (
     create_authorization_code,
@@ -14,6 +18,7 @@ from app.oauth.service import (
     get_scope_descriptions,
 )
 from app.oauth.utils import get_current_user
+from app.templates_config import templates
 
 router = APIRouter(prefix="/oauth", tags=["oauth"])
 
@@ -101,7 +106,9 @@ def authorize(
             scope = scope or stored_params.get("scope")
             state = state or stored_params.get("state")
             code_challenge = code_challenge or stored_params.get("code_challenge")
-            code_challenge_method = code_challenge_method or stored_params.get("code_challenge_method")
+            code_challenge_method = code_challenge_method or stored_params.get(
+                "code_challenge_method"
+            )
             nonce = nonce or stored_params.get("nonce")
 
     # =========================================================================
@@ -129,9 +136,7 @@ def authorize(
     # =========================================================================
     # This must be done BEFORE using redirect_uri for any error redirects
     # to prevent open redirect attacks
-    client = db.query(OAuthClient).filter(
-        OAuthClient.client_id == client_id
-    ).first()
+    client = db.query(OAuthClient).filter(OAuthClient.client_id == client_id).first()
 
     if not client:
         # Unknown client - show error page, don't redirect
@@ -162,7 +167,7 @@ def authorize(
             {
                 "request": request,
                 "error_title": "Invalid Redirect URI",
-                "error_message": "The redirect URI provided does not match the registered redirect URI.",
+                "error_message": ("Redirect URI does not match the registered URI."),
             },
             status_code=400,
         )
@@ -175,7 +180,7 @@ def authorize(
             redirect_uri=redirect_uri,
             error_code=OAuthErrorCode.INVALID_REQUEST,
             description="Missing required parameter: response_type",
-            state=state
+            state=state,
         )
 
     if response_type != "code":
@@ -183,7 +188,7 @@ def authorize(
             redirect_uri=redirect_uri,
             error_code=OAuthErrorCode.UNSUPPORTED_RESPONSE_TYPE,
             description="The authorization server only supports 'code' response type",
-            state=state
+            state=state,
         )
 
     # =========================================================================
@@ -200,15 +205,15 @@ def authorize(
             redirect_uri=redirect_uri,
             error_code=OAuthErrorCode.INVALID_REQUEST,
             description="Missing required parameter: code_challenge (PKCE is required)",
-            state=state
+            state=state,
         )
 
     if code_challenge_method != "S256":
         return create_authorization_error_response(
             redirect_uri=redirect_uri,
             error_code=OAuthErrorCode.INVALID_REQUEST,
-            description="Missing or invalid code_challenge_method. Only 'S256' is supported.",
-            state=state
+            description="Missing/invalid code_challenge_method. Only 'S256' supported.",
+            state=state,
         )
 
     # =========================================================================
@@ -228,10 +233,10 @@ def authorize(
             redirect_uri=redirect_uri,
             error_code=OAuthErrorCode.INVALID_SCOPE,
             description=f"Requested scopes not allowed: {' '.join(invalid_scopes)}",
-            state=state
+            state=state,
         )
 
-    # Store the validated parameters in session for use in consent flow and post-login redirect
+    # Store validated params in session for consent flow and post-login redirect
     request.session["authorize_params"] = {
         "client_id": client_id,
         "redirect_uri": redirect_uri,
@@ -270,9 +275,11 @@ def consent_page(
         return RedirectResponse("/auth/login")
 
     # Get client info for display
-    client = db.query(OAuthClient).filter(
-        OAuthClient.client_id == params["client_id"]
-    ).first()
+    client = (
+        db.query(OAuthClient)
+        .filter(OAuthClient.client_id == params["client_id"])
+        .first()
+    )
 
     if not client:
         raise HTTPException(400, "Invalid client")
@@ -358,7 +365,7 @@ def deny_consent(
         redirect_uri=params["redirect_uri"],
         error_code=OAuthErrorCode.ACCESS_DENIED,
         description="The user denied the authorization request",
-        state=params.get("state")
+        state=params.get("state"),
     )
 
 
@@ -386,7 +393,7 @@ def token(
     if grant_type != "authorization_code":
         raise OAuthError(
             error_code=OAuthErrorCode.UNSUPPORTED_GRANT_TYPE,
-            description="Only 'authorization_code' grant type is supported"
+            description="Only 'authorization_code' grant type is supported",
         )
 
     try:
@@ -402,7 +409,4 @@ def token(
         # Re-raise to be handled by error handler
         raise e
 
-    return {
-        "access_token": access_token,
-        "token_type": "bearer"
-    }
+    return {"access_token": access_token, "token_type": "bearer"}

@@ -1,10 +1,10 @@
 from fastapi import FastAPI
 from starlette.middleware.sessions import SessionMiddleware
 
+from app.oauth.errors import register_oauth_exception_handlers
+from app.oauth.routes import router as oauth_router
 from app.routes import auth
 from app.services.jwt import create_access_token
-from app.oauth.routes import router as oauth_router
-from app.oauth.errors import register_oauth_exception_handlers
 
 app = FastAPI()
 

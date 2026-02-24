@@ -7,12 +7,7 @@ Tests cover:
 - Validation order (security)
 """
 
-import pytest
-from unittest.mock import Mock, patch, MagicMock
 from urllib.parse import parse_qs, urlparse
-
-from fastapi import Request
-from fastapi.responses import RedirectResponse
 
 from app.oauth.errors import OAuthErrorCode, create_authorization_error_response
 
@@ -87,7 +82,7 @@ class TestAuthorizationEndpointErrorHandling:
             redirect_uri="https://client.example.com/callback",
             error_code=OAuthErrorCode.INVALID_REQUEST,
             description="Missing required parameter: response_type",
-            state="xyz123"
+            state="xyz123",
         )
 
         assert response.status_code == 302
@@ -103,7 +98,7 @@ class TestAuthorizationEndpointErrorHandling:
             redirect_uri="https://client.example.com/callback",
             error_code=OAuthErrorCode.UNSUPPORTED_RESPONSE_TYPE,
             description="The authorization server only supports 'code' response type",
-            state="xyz123"
+            state="xyz123",
         )
 
         assert response.status_code == 302
@@ -118,7 +113,7 @@ class TestAuthorizationEndpointErrorHandling:
             redirect_uri="https://client.example.com/callback",
             error_code=OAuthErrorCode.INVALID_REQUEST,
             description="Missing required parameter: code_challenge (PKCE is required)",
-            state="xyz123"
+            state="xyz123",
         )
 
         assert response.status_code == 302
@@ -133,8 +128,8 @@ class TestAuthorizationEndpointErrorHandling:
         response = create_authorization_error_response(
             redirect_uri="https://client.example.com/callback",
             error_code=OAuthErrorCode.INVALID_REQUEST,
-            description="Missing or invalid code_challenge_method. Only 'S256' is supported.",
-            state="xyz123"
+            description="Missing/invalid code_challenge_method. Only 'S256' supported.",
+            state="xyz123",
         )
 
         assert response.status_code == 302
@@ -150,7 +145,7 @@ class TestAuthorizationEndpointErrorHandling:
             redirect_uri="https://client.example.com/callback",
             error_code=OAuthErrorCode.INVALID_REQUEST,
             description="Test error",
-            state=state_value
+            state=state_value,
         )
 
         parsed = urlparse(response.headers["location"])
@@ -163,7 +158,7 @@ class TestAuthorizationEndpointErrorHandling:
         response = create_authorization_error_response(
             redirect_uri="https://client.example.com/callback",
             error_code=OAuthErrorCode.INVALID_REQUEST,
-            description="Test error"
+            description="Test error",
             # No state parameter
         )
 
@@ -219,8 +214,8 @@ class TestPKCEParameterRequirements:
         response = create_authorization_error_response(
             redirect_uri="https://client.example.com/callback",
             error_code=OAuthErrorCode.INVALID_REQUEST,
-            description="Missing or invalid code_challenge_method. Only 'S256' is supported.",
-            state="xyz123"
+            description="Missing/invalid code_challenge_method. Only 'S256' supported.",
+            state="xyz123",
         )
 
         parsed = urlparse(response.headers["location"])
@@ -244,7 +239,7 @@ class TestScopeHandling:
             redirect_uri="https://client.example.com/callback",
             error_code=OAuthErrorCode.INVALID_SCOPE,
             description="Requested scopes not allowed: admin write",
-            state="xyz123"
+            state="xyz123",
         )
 
         assert response.status_code == 302

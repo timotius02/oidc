@@ -37,10 +37,11 @@ def verify_s256_code_verifier(code_verifier: str, code_challenge: str) -> bool:
         True
     """
     # Compute SHA256 hash of the code_verifier
-    sha256_hash = hashlib.sha256(code_verifier.encode('ascii')).digest()
+    sha256_hash = hashlib.sha256(code_verifier.encode("ascii")).digest()
 
     # Base64url encode without padding
-    computed_challenge = base64.urlsafe_b64encode(sha256_hash).decode('ascii').rstrip('=')
+    b64_encoded = base64.urlsafe_b64encode(sha256_hash).decode("ascii")
+    computed_challenge = b64_encoded.rstrip("=")
 
     # Use constant-time comparison to prevent timing attacks.
     # A timing attack exploits minute differences in comparison execution time.

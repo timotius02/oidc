@@ -11,8 +11,6 @@ import base64
 import hashlib
 import secrets
 
-import pytest
-
 from app.oauth.pkce import verify_s256_code_verifier
 
 
@@ -25,8 +23,8 @@ class TestVerifyS256CodeVerifier:
         verifier = secrets.token_urlsafe(32)
 
         # Compute the challenge per RFC 7636
-        sha256_hash = hashlib.sha256(verifier.encode('ascii')).digest()
-        challenge = base64.urlsafe_b64encode(sha256_hash).decode('ascii').rstrip('=')
+        sha256_hash = hashlib.sha256(verifier.encode("ascii")).digest()
+        challenge = base64.urlsafe_b64encode(sha256_hash).decode("ascii").rstrip("=")
 
         assert verify_s256_code_verifier(verifier, challenge) is True
 
@@ -34,8 +32,8 @@ class TestVerifyS256CodeVerifier:
         """Test that an invalid code_verifier does not match."""
         # Generate a valid verifier and challenge
         verifier = secrets.token_urlsafe(32)
-        sha256_hash = hashlib.sha256(verifier.encode('ascii')).digest()
-        challenge = base64.urlsafe_b64encode(sha256_hash).decode('ascii').rstrip('=')
+        sha256_hash = hashlib.sha256(verifier.encode("ascii")).digest()
+        challenge = base64.urlsafe_b64encode(sha256_hash).decode("ascii").rstrip("=")
 
         # Use a different verifier
         wrong_verifier = secrets.token_urlsafe(32)
@@ -57,8 +55,8 @@ class TestVerifyS256CodeVerifier:
         # RFC 7636 allows: [A-Z] / [a-z] / [0-9] / "-" / "." / "_" / "~"
         verifier = "abcDEF123-._~xyz"
 
-        sha256_hash = hashlib.sha256(verifier.encode('ascii')).digest()
-        challenge = base64.urlsafe_b64encode(sha256_hash).decode('ascii').rstrip('=')
+        sha256_hash = hashlib.sha256(verifier.encode("ascii")).digest()
+        challenge = base64.urlsafe_b64encode(sha256_hash).decode("ascii").rstrip("=")
 
         assert verify_s256_code_verifier(verifier, challenge) is True
 
@@ -67,8 +65,8 @@ class TestVerifyS256CodeVerifier:
         # RFC 7636 Section 4.1: code_verifier must be 43-128 characters
         verifier = "a" * 43  # Minimum length
 
-        sha256_hash = hashlib.sha256(verifier.encode('ascii')).digest()
-        challenge = base64.urlsafe_b64encode(sha256_hash).decode('ascii').rstrip('=')
+        sha256_hash = hashlib.sha256(verifier.encode("ascii")).digest()
+        challenge = base64.urlsafe_b64encode(sha256_hash).decode("ascii").rstrip("=")
 
         assert verify_s256_code_verifier(verifier, challenge) is True
 
@@ -76,8 +74,8 @@ class TestVerifyS256CodeVerifier:
         """Test verifier with maximum length (128 characters per RFC 7636)."""
         verifier = "a" * 128  # Maximum length
 
-        sha256_hash = hashlib.sha256(verifier.encode('ascii')).digest()
-        challenge = base64.urlsafe_b64encode(sha256_hash).decode('ascii').rstrip('=')
+        sha256_hash = hashlib.sha256(verifier.encode("ascii")).digest()
+        challenge = base64.urlsafe_b64encode(sha256_hash).decode("ascii").rstrip("=")
 
         assert verify_s256_code_verifier(verifier, challenge) is True
 
@@ -85,26 +83,28 @@ class TestVerifyS256CodeVerifier:
         """Test that challenge without base64 padding works correctly."""
         verifier = secrets.token_urlsafe(32)
 
-        sha256_hash = hashlib.sha256(verifier.encode('ascii')).digest()
+        sha256_hash = hashlib.sha256(verifier.encode("ascii")).digest()
         # Explicitly remove padding
-        challenge = base64.urlsafe_b64encode(sha256_hash).decode('ascii').rstrip('=')
+        challenge = base64.urlsafe_b64encode(sha256_hash).decode("ascii").rstrip("=")
 
         assert verify_s256_code_verifier(verifier, challenge) is True
 
-    def test_challenge_with_padding(self):
-        """Test that challenge with base64 padding still works."""
+    def test_challenge_with_padding_fails(self):
+        """Test that challenge with base64 padding fails verification.
+
+        Per RFC 7636, code_challenge must be base64url-encoded WITHOUT padding.
+        If a client incorrectly includes padding in their stored challenge,
+        verification should fail.
+        """
         verifier = secrets.token_urlsafe(32)
 
-        sha256_hash = hashlib.sha256(verifier.encode('ascii')).digest()
-        # Keep padding (though RFC says to remove it)
-        challenge_with_padding = base64.urlsafe_b64encode(sha256_hash).decode('ascii')
+        sha256_hash = hashlib.sha256(verifier.encode("ascii")).digest()
+        # Keep padding (incorrect per RFC 7636)
+        challenge_with_padding = base64.urlsafe_b64encode(sha256_hash).decode("ascii")
 
-        # Our implementation strips padding from computed challenge,
-        # so this should fail if the stored challenge has padding
-        # This tests the importance of storing challenges without padding
-        challenge_without_padding = challenge_with_padding.rstrip('=')
-
-        assert verify_s256_code_verifier(verifier, challenge_without_padding) is True
+        # Verify that padded challenge fails (as expected per RFC)
+        assert "=" in challenge_with_padding  # Confirm padding exists
+        assert verify_s256_code_verifier(verifier, challenge_with_padding) is False
 
     def test_constant_time_comparison(self):
         """Test that comparison is timing-attack resistant.
@@ -116,11 +116,11 @@ class TestVerifyS256CodeVerifier:
         verifier1 = "a" * 43
         verifier2 = "a" * 128
 
-        sha256_hash1 = hashlib.sha256(verifier1.encode('ascii')).digest()
-        challenge1 = base64.urlsafe_b64encode(sha256_hash1).decode('ascii').rstrip('=')
+        sha256_hash1 = hashlib.sha256(verifier1.encode("ascii")).digest()
+        challenge1 = base64.urlsafe_b64encode(sha256_hash1).decode("ascii").rstrip("=")
 
-        sha256_hash2 = hashlib.sha256(verifier2.encode('ascii')).digest()
-        challenge2 = base64.urlsafe_b64encode(sha256_hash2).decode('ascii').rstrip('=')
+        sha256_hash2 = hashlib.sha256(verifier2.encode("ascii")).digest()
+        challenge2 = base64.urlsafe_b64encode(sha256_hash2).decode("ascii").rstrip("=")
 
         # Both should return False for wrong verifier, regardless of length
         assert verify_s256_code_verifier(verifier2, challenge1) is False
@@ -142,8 +142,9 @@ class TestPKCERFC7636Compliance:
         # We'll compute our own to verify the algorithm is correct
         verifier = "dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"
 
-        sha256_hash = hashlib.sha256(verifier.encode('ascii')).digest()
-        computed_challenge = base64.urlsafe_b64encode(sha256_hash).decode('ascii').rstrip('=')
+        sha256_hash = hashlib.sha256(verifier.encode("ascii")).digest()
+        b64_encoded = base64.urlsafe_b64encode(sha256_hash).decode("ascii")
+        computed_challenge = b64_encoded.rstrip("=")
 
         # The RFC example challenge
         expected_challenge = "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
@@ -160,8 +161,9 @@ class TestPKCERFC7636Compliance:
         verifier = "test_verifier_string"
 
         # Manual computation
-        sha256_hash = hashlib.sha256(verifier.encode('ascii')).digest()
-        expected_challenge = base64.urlsafe_b64encode(sha256_hash).decode('ascii').rstrip('=')
+        sha256_hash = hashlib.sha256(verifier.encode("ascii")).digest()
+        b64_encoded = base64.urlsafe_b64encode(sha256_hash).decode("ascii")
+        expected_challenge = b64_encoded.rstrip("=")
 
         # Verify our function produces the same result
         assert verify_s256_code_verifier(verifier, expected_challenge) is True
@@ -175,13 +177,13 @@ class TestPKCERFC7636Compliance:
         # Generate a verifier that will produce base64 with special chars
         verifier = secrets.token_urlsafe(32)
 
-        sha256_hash = hashlib.sha256(verifier.encode('ascii')).digest()
-        challenge = base64.urlsafe_b64encode(sha256_hash).decode('ascii').rstrip('=')
+        sha256_hash = hashlib.sha256(verifier.encode("ascii")).digest()
+        challenge = base64.urlsafe_b64encode(sha256_hash).decode("ascii").rstrip("=")
 
         # Verify no standard base64 characters are present
-        assert '+' not in challenge
-        assert '/' not in challenge
-        assert '=' not in challenge  # No padding
+        assert "+" not in challenge
+        assert "/" not in challenge
+        assert "=" not in challenge  # No padding
 
         # Verify our function works with this challenge
         assert verify_s256_code_verifier(verifier, challenge) is True

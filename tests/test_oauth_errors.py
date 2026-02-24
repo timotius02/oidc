@@ -8,12 +8,11 @@ Tests cover:
 - create_token_error_response function
 """
 
-import pytest
 from urllib.parse import parse_qs, urlparse
 
 from app.oauth.errors import (
-    OAuthErrorCode,
     OAuthError,
+    OAuthErrorCode,
     create_authorization_error_response,
     create_token_error_response,
 )
@@ -27,7 +26,10 @@ class TestOAuthErrorCode:
         assert OAuthErrorCode.INVALID_REQUEST.value == "invalid_request"
         assert OAuthErrorCode.UNAUTHORIZED_CLIENT.value == "unauthorized_client"
         assert OAuthErrorCode.ACCESS_DENIED.value == "access_denied"
-        assert OAuthErrorCode.UNSUPPORTED_RESPONSE_TYPE.value == "unsupported_response_type"
+        assert (
+            OAuthErrorCode.UNSUPPORTED_RESPONSE_TYPE.value
+            == "unsupported_response_type"
+        )
         assert OAuthErrorCode.INVALID_SCOPE.value == "invalid_scope"
         assert OAuthErrorCode.SERVER_ERROR.value == "server_error"
         assert OAuthErrorCode.TEMPORARILY_UNAVAILABLE.value == "temporarily_unavailable"
@@ -46,7 +48,7 @@ class TestOAuthError:
         """Test OAuthError with description."""
         error = OAuthError(
             error_code=OAuthErrorCode.UNSUPPORTED_RESPONSE_TYPE,
-            description="Only 'code' response type is supported"
+            description="Only 'code' response type is supported",
         )
         assert error.error_code == OAuthErrorCode.UNSUPPORTED_RESPONSE_TYPE
         assert error.description == "Only 'code' response type is supported"
@@ -65,7 +67,7 @@ class TestOAuthError:
             error_code=OAuthErrorCode.INVALID_REQUEST,
             description="Missing required parameter",
             uri="https://example.com/errors#invalid_request",
-            state="abc123"
+            state="abc123",
         )
         assert error.error_code == OAuthErrorCode.INVALID_REQUEST
         assert error.description == "Missing required parameter"
@@ -80,7 +82,7 @@ class TestCreateAuthorizationErrorResponse:
         """Test basic error response with required parameters only."""
         response = create_authorization_error_response(
             redirect_uri="https://client.example.com/callback",
-            error_code=OAuthErrorCode.UNSUPPORTED_RESPONSE_TYPE
+            error_code=OAuthErrorCode.UNSUPPORTED_RESPONSE_TYPE,
         )
 
         assert response.status_code == 302
@@ -98,21 +100,23 @@ class TestCreateAuthorizationErrorResponse:
         response = create_authorization_error_response(
             redirect_uri="https://client.example.com/callback",
             error_code=OAuthErrorCode.UNSUPPORTED_RESPONSE_TYPE,
-            description="Only 'code' response type is supported"
+            description="Only 'code' response type is supported",
         )
 
         parsed = urlparse(response.headers["location"])
         query_params = parse_qs(parsed.query)
 
         assert query_params["error"] == ["unsupported_response_type"]
-        assert query_params["error_description"] == ["Only 'code' response type is supported"]
+        assert query_params["error_description"] == [
+            "Only 'code' response type supported"
+        ]
 
     def test_error_response_with_state(self):
         """Test error response includes state parameter."""
         response = create_authorization_error_response(
             redirect_uri="https://client.example.com/callback",
             error_code=OAuthErrorCode.INVALID_REQUEST,
-            state="xyz123"
+            state="xyz123",
         )
 
         parsed = urlparse(response.headers["location"])
@@ -127,7 +131,7 @@ class TestCreateAuthorizationErrorResponse:
             redirect_uri="https://client.example.com/callback",
             error_code=OAuthErrorCode.ACCESS_DENIED,
             description="User denied access",
-            state="abc456"
+            state="abc456",
         )
 
         parsed = urlparse(response.headers["location"])
@@ -142,17 +146,20 @@ class TestCreateAuthorizationErrorResponse:
         response = create_authorization_error_response(
             redirect_uri="https://client.example.com/callback",
             error_code=OAuthErrorCode.INVALID_REQUEST,
-            description="Missing required parameter: client_id"
+            description="Missing required parameter: client_id",
         )
 
         # The description should be URL encoded
-        assert "Missing%20required%20parameter%3A%20client_id" in response.headers["location"]
+        assert (
+            "Missing%20required%20parameter%3A%20client_id"
+            in response.headers["location"]
+        )
 
     def test_error_response_with_existing_query_params(self):
         """Test error response when redirect_uri has existing query params."""
         response = create_authorization_error_response(
             redirect_uri="https://client.example.com/callback?foo=bar",
-            error_code=OAuthErrorCode.INVALID_REQUEST
+            error_code=OAuthErrorCode.INVALID_REQUEST,
         )
 
         # Should use & instead of ? for appending error params
@@ -167,9 +174,7 @@ class TestCreateTokenErrorResponse:
 
     def test_basic_token_error_response(self):
         """Test basic token error response with required parameters only."""
-        response = create_token_error_response(
-            error_code=OAuthErrorCode.INVALID_GRANT
-        )
+        response = create_token_error_response(error_code=OAuthErrorCode.INVALID_GRANT)
 
         assert response.status_code == 400
         assert response.headers["Cache-Control"] == "no-store"
@@ -179,10 +184,11 @@ class TestCreateTokenErrorResponse:
         """Test token error response with description."""
         response = create_token_error_response(
             error_code=OAuthErrorCode.INVALID_GRANT,
-            description="The authorization code has expired"
+            description="The authorization code has expired",
         )
 
         import json
+
         body = json.loads(response.body)
 
         assert body["error"] == "invalid_grant"
@@ -193,10 +199,11 @@ class TestCreateTokenErrorResponse:
         response = create_token_error_response(
             error_code=OAuthErrorCode.INVALID_CLIENT,
             description="Client authentication failed",
-            uri="https://example.com/errors#invalid_client"
+            uri="https://example.com/errors#invalid_client",
         )
 
         import json
+
         body = json.loads(response.body)
 
         assert body["error"] == "invalid_client"

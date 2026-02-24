@@ -1,5 +1,7 @@
-from jose import jwt
 from datetime import datetime, timedelta
+
+from jose import jwt
+
 from ..config import settings
 
 with open(settings.PRIVATE_KEY_PATH) as f:

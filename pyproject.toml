@@ -24,4 +24,17 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",
+    "ruff>=0.15.0",
+    "pre-commit>=4.0.0",
 ]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 88
+
+[tool.ruff.lint]
+select = ["F401", "E501", "I001"]
+ignore = []
+
+[tool.ruff.lint.isort]
+known-first-party = ["app", "tests"]

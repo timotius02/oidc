@@ -1,9 +1,11 @@
 import uuid
-from sqlalchemy import Column, String, Text, DateTime, ForeignKey
-from sqlalchemy.dialects.postgresql import UUID
 from datetime import datetime
 
+from sqlalchemy import Column, DateTime, String, Text
+from sqlalchemy.dialects.postgresql import UUID
+
 from app.db import Base
+
 
 class OAuthClient(Base):
     __tablename__ = "oauth_clients"

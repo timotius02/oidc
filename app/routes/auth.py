@@ -1,13 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, Request, Form
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.params import Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.models.user import User
-from app.schemas.user import UserCreate, UserLogin
+from app.schemas.user import UserCreate
 from app.services.auth import hash_password, verify_password
-from app.services.jwt import create_access_token
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -45,6 +44,7 @@ def login_page(next: str = Query("/")):  # default redirect is "/"
         </body>
     </html>
     """
+
 
 @router.post("/login")
 def login(

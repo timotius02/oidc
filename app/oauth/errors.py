@@ -13,7 +13,7 @@ from enum import Enum
 from typing import Optional
 from urllib.parse import quote
 
-from fastapi.responses import RedirectResponse, JSONResponse
+from fastapi.responses import JSONResponse, RedirectResponse
 
 
 class OAuthErrorCode(str, Enum):
@@ -69,7 +69,7 @@ class OAuthError(Exception):
         error_code: OAuthErrorCode,
         description: Optional[str] = None,
         uri: Optional[str] = None,
-        state: Optional[str] = None
+        state: Optional[str] = None,
     ):
         self.error_code = error_code
         self.description = description
@@ -82,7 +82,7 @@ def create_authorization_error_response(
     redirect_uri: str,
     error_code: OAuthErrorCode,
     description: Optional[str] = None,
-    state: Optional[str] = None
+    state: Optional[str] = None,
 ) -> RedirectResponse:
     """
     Create a redirect response with OAuth error parameters.
@@ -119,8 +119,7 @@ def create_authorization_error_response(
 
     # Build the query string with URL-encoded values
     query_string = "&".join(
-        f"{key}={quote(value, safe='')}"
-        for key, value in params.items()
+        f"{key}={quote(value, safe='')}" for key, value in params.items()
     )
 
     # Determine separator based on whether redirect_uri already has query params
@@ -133,7 +132,7 @@ def create_authorization_error_response(
 def create_token_error_response(
     error_code: OAuthErrorCode,
     description: Optional[str] = None,
-    uri: Optional[str] = None
+    uri: Optional[str] = None,
 ) -> JSONResponse:
     """
     Create a JSON error response for the token endpoint.
@@ -155,7 +154,7 @@ def create_token_error_response(
         ...     error_code=OAuthErrorCode.INVALID_GRANT,
         ...     description="The authorization code has expired"
         ... )
-        >>> # Returns HTTP 400 with body: {"error": "invalid_grant", "error_description": "..."}
+        >>> # Returns HTTP 400: {"error": "invalid_grant", "error_description": ...}
     """
     content = {"error": error_code.value}
 
@@ -168,10 +167,7 @@ def create_token_error_response(
     return JSONResponse(
         status_code=400,
         content=content,
-        headers={
-            "Cache-Control": "no-store",
-            "Pragma": "no-cache"
-        }
+        headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
     )
 
 
@@ -197,7 +193,5 @@ def register_oauth_exception_handlers(app) -> None:
     async def oauth_error_handler(request, exc: OAuthError):
         """Handle OAuth errors and return proper error responses."""
         return create_token_error_response(
-            error_code=exc.error_code,
-            description=exc.description,
-            uri=exc.uri
+            error_code=exc.error_code, description=exc.description, uri=exc.uri
         )
