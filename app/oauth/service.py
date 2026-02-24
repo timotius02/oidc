@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy.orm import Session
 
+from app.oauth.errors import OAuthError, OAuthErrorCode
 from app.oauth.models import AuthorizationCode
 from app.services.jwt import create_access_token
 
@@ -38,10 +39,17 @@ def exchange_code_for_token(db: Session, code: str):
     )
 
     if not auth_code:
-        raise Exception("Invalid code")
+        raise OAuthError(
+            error_code=OAuthErrorCode.INVALID_GRANT,
+            description="The authorization code is invalid or has been used"
+        )
 
     if auth_code.expires_at < datetime.utcnow():
-        raise Exception("Code expired")
+        raise OAuthError(
+            error_code=OAuthErrorCode.INVALID_GRANT,
+            description="The authorization code has expired"
+        )
+
 
     access_token = create_access_token(
         subject=str(auth_code.user_id),
