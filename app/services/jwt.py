@@ -9,7 +9,7 @@ with open(settings.PUBLIC_KEY_PATH) as f:
     PUBLIC_KEY = f.read()
 
 
-def create_access_token(subject: str, audience: str):
+def create_access_token(subject: str, audience: str, scope: str) -> str:
     now = datetime.utcnow()
 
     payload = {
@@ -18,6 +18,7 @@ def create_access_token(subject: str, audience: str):
         "aud": audience,
         "iat": now,
         "exp": now + timedelta(seconds=settings.ACCESS_TOKEN_EXPIRE_SECONDS),
+        "scope": scope,
     }
 
     return jwt.encode(payload, PRIVATE_KEY, algorithm="RS256")

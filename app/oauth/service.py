@@ -199,7 +199,8 @@ def exchange_code_for_token(
 
     access_token = create_access_token(
         subject=str(auth_code.user_id),
-        audience=auth_code.client_id
+        audience=auth_code.client_id,
+        scope=auth_code.scope,
     )
 
     # Delete the code (single use)
