@@ -34,3 +34,6 @@ class AuthorizationCode(Base):
 
     expires_at = Column(DateTime, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+    code_challenge = Column(String, nullable=True)  # For PKCE
+    code_challenge_method = Column(String, nullable=True)  # For PKCE

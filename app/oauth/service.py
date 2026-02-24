@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from app.oauth.errors import OAuthError, OAuthErrorCode
 from app.oauth.models import AuthorizationCode, OAuthClient
+from app.oauth.pkce import verify_s256_code_verifier
 from app.services.jwt import create_access_token
 
 
@@ -96,6 +97,8 @@ def create_authorization_code(
     client_id: str,
     redirect_uri: str,
     scope: str,
+    code_challenge: Optional[str] = None,
+    code_challenge_method: Optional[str] = None,
     nonce: Optional[str] = None,
 ) -> str:
     """
@@ -107,6 +110,8 @@ def create_authorization_code(
         client_id: Client identifier
         redirect_uri: Redirect URI for validation at token exchange
         scope: Granted scopes (space-separated)
+        code_challenge: PKCE code challenge (required if PKCE is enforced)
+        code_challenge_method: PKCE method (e.g., "S256")
         nonce: Optional nonce for OIDC id_token
 
     Returns:
@@ -121,6 +126,8 @@ def create_authorization_code(
         redirect_uri=redirect_uri,
         scope=scope,
         nonce=nonce,
+        code_challenge=code_challenge,
+        code_challenge_method=code_challenge_method,
         expires_at=datetime.utcnow() + timedelta(seconds=CODE_EXPIRY_SECONDS),
     )
 
@@ -136,6 +143,7 @@ def exchange_code_for_token(
     client_id: str,
     client_secret: str,
     redirect_uri: str,
+    code_verifier: Optional[str] = None,
 ) -> str:
     """
     Exchange an authorization code for an access token.
@@ -146,6 +154,7 @@ def exchange_code_for_token(
         client_id: Client identifier
         client_secret: Client secret for authentication
         redirect_uri: Must match the redirect_uri from authorization request
+        code_verifier: PKCE code verifier (required if code_challenge was used)
 
     Returns:
         Access token string
@@ -196,6 +205,21 @@ def exchange_code_for_token(
             error_code=OAuthErrorCode.INVALID_GRANT,
             description="Redirect URI mismatch"
         )
+
+    # Validate PKCE code_verifier per RFC 7636 Section 4.6
+    # Note: Authorization endpoint enforces S256-only, so we only need to verify
+    if auth_code.code_challenge:
+        if not code_verifier:
+            raise OAuthError(
+                error_code=OAuthErrorCode.INVALID_REQUEST,
+                description="Missing required parameter: code_verifier"
+            )
+
+        if not verify_s256_code_verifier(code_verifier, auth_code.code_challenge):
+            raise OAuthError(
+                error_code=OAuthErrorCode.INVALID_GRANT,
+                description="PKCE verification failed: code_verifier does not match code_challenge"
+            )
 
     access_token = create_access_token(
         subject=str(auth_code.user_id),

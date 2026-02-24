@@ -74,6 +74,8 @@ def authorize(
     response_type: Optional[str] = None,
     scope: Optional[str] = None,
     state: Optional[str] = None,
+    code_challenge: Optional[str] = None,
+    code_challenge_method: Optional[str] = None,
     nonce: Optional[str] = None,
     db: Session = Depends(get_db),
 ):
@@ -89,7 +91,7 @@ def authorize(
     """
     # If query params are missing, try to restore from session
     # This handles the post-login redirect case
-    if client_id is None or redirect_uri is None or response_type is None or scope is None or state is None:
+    if client_id is None or redirect_uri is None or response_type is None:
         stored_params = request.session.get("authorize_params")
         if stored_params:
             # Use stored params for missing values
@@ -98,21 +100,33 @@ def authorize(
             response_type = response_type or stored_params.get("response_type")
             scope = scope or stored_params.get("scope")
             state = state or stored_params.get("state")
+            code_challenge = code_challenge or stored_params.get("code_challenge")
+            code_challenge_method = code_challenge_method or stored_params.get("code_challenge_method")
             nonce = nonce or stored_params.get("nonce")
 
-    # Validate that we have all required parameters
-    if not all([client_id, redirect_uri, response_type, scope, state]):
+    # =========================================================================
+    # STEP 1: Validate client_id (REQUIRED per RFC 6749 Section 4.1.1)
+    # =========================================================================
+    # Per RFC 6749 Section 4.1.2.1:
+    # "If the request fails due to a missing, invalid, or mismatching
+    # redirection URI, or if the client identifier is missing or invalid,
+    # the authorization server SHOULD inform the resource owner of the
+    # error and MUST NOT automatically redirect the user-agent to the
+    # invalid redirection URI."
+    if not client_id:
         return templates.TemplateResponse(
             "error.html",
             {
                 "request": request,
                 "error_title": "Invalid Request",
-                "error_message": "Missing required OAuth parameters. Please restart the authorization flow.",
+                "error_message": "Missing required parameter: client_id",
             },
             status_code=400,
         )
 
-    # First, validate the client exists and check redirect_uri
+    # =========================================================================
+    # STEP 2: Validate client exists
+    # =========================================================================
     # This must be done BEFORE using redirect_uri for any error redirects
     # to prevent open redirect attacks
     client = db.query(OAuthClient).filter(
@@ -131,6 +145,14 @@ def authorize(
             status_code=400,
         )
 
+    # =========================================================================
+    # STEP 3: Validate redirect_uri
+    # =========================================================================
+    # Per RFC 6749 Section 4.1.1, redirect_uri is OPTIONAL if the client
+    # has pre-registered a redirect URI. If not provided, use the registered one.
+    if redirect_uri is None:
+        redirect_uri = client.redirect_uri
+
     # Validate redirect_uri matches registered URI
     if redirect_uri != client.redirect_uri:
         # Invalid redirect_uri - show error page, don't redirect
@@ -145,7 +167,17 @@ def authorize(
             status_code=400,
         )
 
-    # Validate response type
+    # =========================================================================
+    # STEP 4: Validate response_type (REQUIRED per RFC 6749 Section 4.1.1)
+    # =========================================================================
+    if not response_type:
+        return create_authorization_error_response(
+            redirect_uri=redirect_uri,
+            error_code=OAuthErrorCode.INVALID_REQUEST,
+            description="Missing required parameter: response_type",
+            state=state
+        )
+
     if response_type != "code":
         return create_authorization_error_response(
             redirect_uri=redirect_uri,
@@ -153,6 +185,38 @@ def authorize(
             description="The authorization server only supports 'code' response type",
             state=state
         )
+
+    # =========================================================================
+    # STEP 5: Validate PKCE parameters
+    # =========================================================================
+    # Per RFC 7636 Section 4.2:
+    # - code_challenge is REQUIRED when PKCE is mandated by the server
+    # - code_challenge_method is OPTIONAL, defaults to "plain" if absent
+    #
+    # This server enforces S256 only for security (modern best practice).
+    # Clients MUST explicitly provide code_challenge_method=S256.
+    if not code_challenge:
+        return create_authorization_error_response(
+            redirect_uri=redirect_uri,
+            error_code=OAuthErrorCode.INVALID_REQUEST,
+            description="Missing required parameter: code_challenge (PKCE is required)",
+            state=state
+        )
+
+    if code_challenge_method != "S256":
+        return create_authorization_error_response(
+            redirect_uri=redirect_uri,
+            error_code=OAuthErrorCode.INVALID_REQUEST,
+            description="Missing or invalid code_challenge_method. Only 'S256' is supported.",
+            state=state
+        )
+
+    # =========================================================================
+    # STEP 6: Validate scope (OPTIONAL per RFC 6749 Section 4.1.1)
+    # =========================================================================
+    # If scope is not provided, use the client's default scopes
+    if not scope:
+        scope = client.scopes
 
     # Validate requested scopes are subset of allowed scopes
     allowed_scopes = set(client.scopes.split())
@@ -174,6 +238,8 @@ def authorize(
         "response_type": response_type,
         "scope": scope,
         "state": state,
+        "code_challenge": code_challenge,
+        "code_challenge_method": code_challenge_method,
         "nonce": nonce,
     }
 
@@ -250,15 +316,18 @@ def approve_consent(
         client_id=params["client_id"],
         redirect_uri=params["redirect_uri"],
         scope=params["scope"],
+        code_challenge=params.get("code_challenge"),
+        code_challenge_method=params.get("code_challenge_method"),
         nonce=params.get("nonce"),
     )
 
     # Clear session params
     request.session.pop("authorize_params", None)
 
-    redirect_url = (
-        f"{params['redirect_uri']}?code={code}&state={params['state']}"
-    )
+    # Build redirect URL - state is optional (RECOMMENDED but not REQUIRED per RFC 6749)
+    redirect_url = f"{params['redirect_uri']}?code={code}"
+    if params.get("state"):
+        redirect_url += f"&state={params['state']}"
 
     return RedirectResponse(redirect_url)
 
@@ -300,16 +369,18 @@ def token(
     client_id: str = Form(...),
     client_secret: str = Form(...),
     redirect_uri: str = Form(...),
+    code_verifier: str = Form(...),
     db: Session = Depends(get_db),
 ):
     """
     OAuth 2.0 Token Endpoint.
 
     Exchanges an authorization code for an access token.
-    Validates client credentials and redirect_uri.
+    Validates client credentials, redirect_uri, and PKCE code_verifier.
 
     Per RFC 6749, this endpoint accepts application/x-www-form-urlencoded
     request body with form parameters.
+    Per RFC 7636, code_verifier is required when PKCE was used in authorization.
     """
     # Validate grant type
     if grant_type != "authorization_code":
@@ -325,6 +396,7 @@ def token(
             client_id=client_id,
             client_secret=client_secret,
             redirect_uri=redirect_uri,
+            code_verifier=code_verifier,
         )
     except OAuthError as e:
         # Re-raise to be handled by error handler
