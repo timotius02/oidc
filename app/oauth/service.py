@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.oauth.errors import OAuthError, OAuthErrorCode
 from app.oauth.jwt import (
     create_access_token,
+    revoke_token_chain,
     rotate_refresh_token,
     validate_refresh_token,
 )
@@ -252,7 +253,7 @@ def exchange_code_for_tokens(
             )
 
     # Create access token
-    access_token = create_access_token(
+    access_token, _ = create_access_token(
         subject=str(auth_code.user_id),
         audience=auth_code.client_id,
         scope=auth_code.scope,
@@ -359,7 +360,7 @@ def handle_refresh_token_grant(
     new_refresh_token = rotate_refresh_token(db, token_record)
 
     # Create new access token
-    access_token = create_access_token(
+    access_token, _ = create_access_token(
         subject=str(token_record.user_id),
         audience=client_id,
         scope=final_scope,
@@ -372,3 +373,26 @@ def handle_refresh_token_grant(
         "refresh_token": new_refresh_token,
         "scope": final_scope,
     }
+
+
+def revoke_token(
+    db: Session,
+    token: str,
+    token_type_hint: Optional[str] = None,
+    client_id: Optional[str] = None,
+):
+    """
+    Revoke an access or refresh token per RFC 7009.
+    For refresh tokens, marks as revoked and revokes entire token chain.
+    For access tokens (JWTs), relies on short expiry - no action needed.
+    """
+
+    # Try to find the token in refresh tokens
+    refresh_token = db.query(RefreshToken).filter(RefreshToken.token == token).first()
+
+    if refresh_token:
+        if refresh_token.client_id == client_id:
+            revoke_token_chain(db, refresh_token, reason="user_revoked")
+        return
+
+    # For access tokens, short expiry (5 min) is sufficient - no blacklist needed

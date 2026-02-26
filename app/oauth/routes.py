@@ -17,6 +17,7 @@ from app.oauth.service import (
     get_scope_descriptions,
     handle_authorization_code_grant,
     handle_refresh_token_grant,
+    revoke_token,
 )
 from app.oauth.utils import get_current_user
 from app.templates_config import templates
@@ -417,3 +418,39 @@ def token(
             error_code=OAuthErrorCode.UNSUPPORTED_GRANT_TYPE,
             description=f"Unsupported grant type: {grant_type}",
         )
+
+
+@router.post("/revoke")
+def revoke(
+    token: str = Form(...),
+    token_type_hint: Optional[str] = Form(None),
+    client_id: str = Form(...),
+    client_secret: str = Form(...),
+    db: Session = Depends(get_db),
+):
+    """
+    OAuth 2.0 Token Revocation Endpoint (RFC 7009).
+
+    Allows clients to revoke tokens (refresh or access) when they are no longer needed.
+    Validates client credentials & token existence. Per RFC 7009, the endpoint responds
+    with HTTP 200 even if the token is invalid or already revoked to prevent token
+    enumeration.
+
+    This implementation supports revoking refresh tokens but follows Modern OAuth
+    guidance of allowing access tokens to expire naturally without revocation due to
+    their short lifespan and stateless nature.
+    """
+    # Validate client credentials
+    client = db.query(OAuthClient).filter(OAuthClient.client_id == client_id).first()
+
+    if not client or client.client_secret != client_secret:
+        raise OAuthError(
+            error_code=OAuthErrorCode.INVALID_CLIENT,
+            description="Invalid client credentials",
+        )
+
+    # Attempt to revoke the token (access or refresh)
+    revoke_token(db, token, token_type_hint, client_id)
+
+    # Per RFC 7009 Section 2.2, respond with HTTP 200 even if the token is invalid
+    return {"success": True}

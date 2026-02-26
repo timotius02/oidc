@@ -27,5 +27,5 @@ def root():
 
 @app.get("/test-token")
 def test_token():
-    token = create_access_token("user123", "client123", "openid profile email")
-    return {"access_token": token}
+    token, jti = create_access_token("user123", "client123", "openid profile email")
+    return {"access_token": token, "jti": jti}

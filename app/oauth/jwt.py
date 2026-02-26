@@ -1,3 +1,4 @@
+import uuid
 from datetime import datetime, timedelta
 
 from jose import jwt
@@ -15,8 +16,15 @@ with open(settings.PUBLIC_KEY_PATH) as f:
     PUBLIC_KEY = f.read()
 
 
-def create_access_token(subject: str, audience: str, scope: str) -> str:
+def create_access_token(subject: str, audience: str, scope: str) -> tuple[str, str]:
+    """
+    Create a JWT access token with jti for identification.
+
+    Returns:
+        Tuple of (access_token, jti)
+    """
     now = datetime.utcnow()
+    jti = str(uuid.uuid4())
 
     payload = {
         "iss": settings.JWT_ISSUER,
@@ -25,19 +33,28 @@ def create_access_token(subject: str, audience: str, scope: str) -> str:
         "iat": now,
         "exp": now + timedelta(seconds=settings.ACCESS_TOKEN_EXPIRE_SECONDS),
         "scope": scope,
+        "jti": jti,
     }
 
-    return jwt.encode(payload, PRIVATE_KEY, algorithm="RS256")
+    token = jwt.encode(payload, PRIVATE_KEY, algorithm="RS256")
+    return token, jti
 
 
-def verify_token(token: str, audience: str):
-    return jwt.decode(
+def verify_token(token: str, audience: str) -> dict:
+    payload = jwt.decode(
         token,
         PUBLIC_KEY,
         algorithms=["RS256"],
         audience=audience,
         issuer=settings.JWT_ISSUER,
     )
+    return payload
+
+
+def get_token_jti(token: str) -> str:
+    """Extract jti from token without full validation (for revocation lookup)."""
+    unverified = jwt.get_unverified_claims(token)
+    return unverified.get("jti", "")
 
 
 def revoke_token_chain(
