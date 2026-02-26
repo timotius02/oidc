@@ -5,11 +5,15 @@ from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from app.oauth.errors import OAuthError, OAuthErrorCode
-from app.oauth.models import AuthorizationCode, OAuthClient
+from app.oauth.jwt import (
+    create_access_token,
+    rotate_refresh_token,
+    validate_refresh_token,
+)
+from app.oauth.models import AuthorizationCode, OAuthClient, RefreshToken
 from app.oauth.pkce import verify_s256_code_verifier
-from app.services.jwt import create_access_token
 
-CODE_EXPIRY_SECONDS = 600
+from ..config import settings
 
 # Scope descriptions for consent screen
 SCOPE_DESCRIPTIONS: Dict[str, str] = {
@@ -121,7 +125,7 @@ def create_authorization_code(
         nonce=nonce,
         code_challenge=code_challenge,
         code_challenge_method=code_challenge_method,
-        expires_at=datetime.utcnow() + timedelta(seconds=CODE_EXPIRY_SECONDS),
+        expires_at=datetime.utcnow() + timedelta(seconds=settings.CODE_EXPIRY_SECONDS),
     )
 
     db.add(auth_code)
@@ -130,7 +134,46 @@ def create_authorization_code(
     return code
 
 
-def exchange_code_for_token(
+def create_refresh_token(
+    db: Session,
+    user_id: str,
+    client_id: str,
+    scope: str,
+    parent_token_id: Optional[str] = None,
+) -> str:
+    """
+    Create a refresh token for the OAuth flow.
+
+    Args:
+        db: Database session
+        user_id: User's UUID
+        client_id: Client identifier
+        scope: Granted scopes (space-separated)
+        parent_token_id: Optional parent token ID for chain tracking
+
+    Returns:
+        The generated refresh token string
+    """
+
+    token = secrets.token_urlsafe(32)
+
+    refresh_token = RefreshToken(
+        token=token,
+        user_id=user_id,
+        client_id=client_id,
+        scope=scope,
+        expires_at=datetime.utcnow()
+        + timedelta(seconds=settings.REFRESH_TOKEN_EXPIRE_SECONDS),
+        parent_token_id=parent_token_id,
+    )
+
+    db.add(refresh_token)
+    db.commit()
+
+    return token
+
+
+def exchange_code_for_tokens(
     db: Session,
     code: str,
     client_id: str,
@@ -139,7 +182,7 @@ def exchange_code_for_token(
     code_verifier: Optional[str] = None,
 ) -> str:
     """
-    Exchange an authorization code for an access token.
+    Exchange an authorization code for access token and refresh tokens.
 
     Args:
         db: Database session
@@ -150,7 +193,7 @@ def exchange_code_for_token(
         code_verifier: PKCE code verifier (required if code_challenge was used)
 
     Returns:
-        Access token string
+        Tuple of (access_token, refresh_token)
 
     Raises:
         OAuthError if code is invalid, expired, or client authentication fails
@@ -208,9 +251,18 @@ def exchange_code_for_token(
                 description="PKCE verification failed: code_verifier mismatch",
             )
 
+    # Create access token
     access_token = create_access_token(
         subject=str(auth_code.user_id),
         audience=auth_code.client_id,
+        scope=auth_code.scope,
+    )
+
+    # Create refresh token
+    refresh_token = create_refresh_token(
+        db=db,
+        user_id=auth_code.user_id,
+        client_id=auth_code.client_id,
         scope=auth_code.scope,
     )
 
@@ -218,4 +270,105 @@ def exchange_code_for_token(
     db.delete(auth_code)
     db.commit()
 
-    return access_token
+    return access_token, refresh_token
+
+
+def handle_authorization_code_grant(
+    db: Session,
+    code: Optional[str],
+    client_id: str,
+    client_secret: str,
+    redirect_uri: str,
+    code_verifier: Optional[str],
+    scope: Optional[str],
+):
+    """Handle authorization_code grant type."""
+    if not code:
+        raise OAuthError(
+            error_code=OAuthErrorCode.INVALID_REQUEST,
+            description="Missing required parameter: code",
+        )
+
+    # Exchange code for tokens
+    access_token, refresh_token = exchange_code_for_tokens(
+        db=db,
+        code=code,
+        client_id=client_id,
+        client_secret=client_secret,
+        redirect_uri=redirect_uri,
+        code_verifier=code_verifier,
+    )
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "expires_in": settings.ACCESS_TOKEN_EXPIRE_SECONDS,
+        "refresh_token": refresh_token,
+        "scope": scope,
+    }
+
+
+def handle_refresh_token_grant(
+    db: Session,
+    refresh_token: Optional[str],
+    client_id: str,
+    client_secret: str,
+    scope: Optional[str],
+):
+    """
+    Handle refresh_token grant type per RFC 6749 §6.
+
+    Validates the refresh token, rotates it, and issues new tokens.
+    """
+    if not refresh_token:
+        raise OAuthError(
+            error_code=OAuthErrorCode.INVALID_REQUEST,
+            description="Missing required parameter: refresh_token",
+        )
+
+    # Validate client credentials
+    client = db.query(OAuthClient).filter(OAuthClient.client_id == client_id).first()
+
+    if not client or client.client_secret != client_secret:
+        raise OAuthError(
+            error_code=OAuthErrorCode.INVALID_CLIENT,
+            description="Client authentication failed",
+        )
+
+    # Validate refresh token
+    token_record = validate_refresh_token(
+        db=db,
+        token=refresh_token,
+        client_id=client_id,
+    )
+
+    # Handle scope - must be subset of original scope
+    if scope:
+        original_scopes = set(token_record.scope.split())
+        requested_scopes = set(scope.split())
+        if not requested_scopes.issubset(original_scopes):
+            raise OAuthError(
+                error_code=OAuthErrorCode.INVALID_SCOPE,
+                description="Requested scope exceeds original grant",
+            )
+        final_scope = scope
+    else:
+        final_scope = token_record.scope
+
+    # Rotate refresh token
+    new_refresh_token = rotate_refresh_token(db, token_record)
+
+    # Create new access token
+    access_token = create_access_token(
+        subject=str(token_record.user_id),
+        audience=client_id,
+        scope=final_scope,
+    )
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "expires_in": settings.ACCESS_TOKEN_EXPIRE_SECONDS,
+        "refresh_token": new_refresh_token,
+        "scope": final_scope,
+    }

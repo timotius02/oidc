@@ -14,8 +14,9 @@ from app.oauth.errors import (
 from app.oauth.models import OAuthClient
 from app.oauth.service import (
     create_authorization_code,
-    exchange_code_for_token,
     get_scope_descriptions,
+    handle_authorization_code_grant,
+    handle_refresh_token_grant,
 )
 from app.oauth.utils import get_current_user
 from app.templates_config import templates
@@ -372,41 +373,47 @@ def deny_consent(
 @router.post("/token")
 def token(
     grant_type: str = Form(...),
-    code: str = Form(...),
+    code: Optional[str] = Form(None),
     client_id: str = Form(...),
     client_secret: str = Form(...),
     redirect_uri: str = Form(...),
-    code_verifier: str = Form(...),
+    code_verifier: Optional[str] = Form(None),
+    refresh_token: Optional[str] = Form(None),
+    scope: Optional[str] = Form(None),
     db: Session = Depends(get_db),
 ):
     """
     OAuth 2.0 Token Endpoint.
 
-    Exchanges an authorization code for an access token.
-    Validates client credentials, redirect_uri, and PKCE code_verifier.
+    Exchanges an authorization code for an access token and refresh token,
+    or rotates a refresh token. Validates client credentials, redirect_uri,
+    PKCE code_verifier, and refresh token.
 
-    Per RFC 6749, this endpoint accepts application/x-www-form-urlencoded
-    request body with form parameters.
-    Per RFC 7636, code_verifier is required when PKCE was used in authorization.
+    Supports:
+    - authorization_code grant (RFC 6749 §4.1)
+    - refresh_token grant (RFC 6749 §6)
+
     """
-    # Validate grant type
-    if grant_type != "authorization_code":
-        raise OAuthError(
-            error_code=OAuthErrorCode.UNSUPPORTED_GRANT_TYPE,
-            description="Only 'authorization_code' grant type is supported",
-        )
-
-    try:
-        access_token = exchange_code_for_token(
+    if grant_type == "authorization_code":
+        return handle_authorization_code_grant(
             db=db,
             code=code,
             client_id=client_id,
             client_secret=client_secret,
             redirect_uri=redirect_uri,
             code_verifier=code_verifier,
+            scope=scope,
         )
-    except OAuthError as e:
-        # Re-raise to be handled by error handler
-        raise e
-
-    return {"access_token": access_token, "token_type": "bearer"}
+    elif grant_type == "refresh_token":
+        return handle_refresh_token_grant(
+            db=db,
+            refresh_token=refresh_token,
+            client_id=client_id,
+            client_secret=client_secret,
+            scope=scope,
+        )
+    else:
+        raise OAuthError(
+            error_code=OAuthErrorCode.UNSUPPORTED_GRANT_TYPE,
+            description=f"Unsupported grant type: {grant_type}",
+        )
