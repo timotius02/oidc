@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from app.oauth.errors import OAuthError
 from app.oauth.models import AuthorizationCode, OAuthClient
 from app.oauth.service import handle_authorization_code_grant
+from app.services.auth import hash_password
 
 
 @pytest.fixture
@@ -30,7 +31,7 @@ def test_auth_code_grant_without_redirect_uri_succeeds_if_missing_in_auth_reques
     """
     client = OAuthClient(
         client_id="test_client",
-        client_secret="test_secret",
+        client_secret=hash_password("test_secret"),
         redirect_uri="http://localhost/callback",
         client_type="confidential",
     )
@@ -74,7 +75,7 @@ def test_auth_code_grant_fails_without_redirect_uri_if_present_in_auth_request(m
     """
     client = OAuthClient(
         client_id="test_client",
-        client_secret="test_secret",
+        client_secret=hash_password("test_secret"),
         redirect_uri="http://localhost/callback",
         client_type="confidential",
     )

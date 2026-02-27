@@ -17,6 +17,7 @@ from sqlalchemy.orm import Session
 
 from app.oauth.models import OAuthClient, RefreshToken
 from app.oauth.service import revoke_token
+from app.services.auth import hash_password
 
 # =============================================================================
 # Fixtures
@@ -48,7 +49,7 @@ def sample_client(sample_client_id):
     client = OAuthClient(
         id=uuid.uuid4(),
         client_id=sample_client_id,
-        client_secret="test_secret",
+        client_secret=hash_password("test_secret"),
         redirect_uri="https://client.example.com/callback",
         name="Test Client",
         scopes="openid profile email offline_access",

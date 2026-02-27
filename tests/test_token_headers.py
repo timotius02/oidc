@@ -15,6 +15,7 @@ from app.oauth.service import (
     handle_refresh_token_grant,
 )
 from app.oauth.utils import create_token_response
+from app.services.auth import hash_password
 
 
 @pytest.fixture
@@ -39,9 +40,11 @@ def test_authorization_code_grant_headers(mock_db):
     # Setup mocks
     client = OAuthClient(
         client_id="test_client",
-        client_secret="test_secret",
+        client_secret=hash_password("test_secret"),
         redirect_uri="http://localhost/callback",
         client_type="confidential",
+        name="Test Client",
+        scopes="openid profile",
     )
 
     code_record = AuthorizationCode(
@@ -83,7 +86,11 @@ def test_refresh_token_grant_headers(mock_db):
     """Verify headers in refresh_token grant response."""
     # Setup mocks
     client = OAuthClient(
-        client_id="test_client", client_secret="test_secret", client_type="confidential"
+        client_id="test_client",
+        client_secret=hash_password("test_secret"),
+        client_type="confidential",
+        name="Test Client",
+        scopes="openid profile",
     )
 
     from app.oauth.models import RefreshToken

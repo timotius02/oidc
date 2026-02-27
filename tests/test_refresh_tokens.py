@@ -28,6 +28,7 @@ from app.oauth.jwt import (
 from app.oauth.models import OAuthClient, RefreshToken
 from app.oauth.service import create_refresh_token as service_create_refresh_token
 from app.oauth.service import handle_refresh_token_grant
+from app.services.auth import hash_password
 
 # =============================================================================
 # Fixtures
@@ -59,7 +60,7 @@ def sample_client(sample_client_id):
     client = OAuthClient(
         id=uuid.uuid4(),
         client_id=sample_client_id,
-        client_secret="test_secret",
+        client_secret=hash_password("test_secret"),
         redirect_uri="https://client.example.com/callback",
         name="Test Client",
         scopes="openid profile email offline_access",
@@ -1022,7 +1023,7 @@ class TestRefreshTokenGrantEndpoint:
                         db=mock_db,
                         refresh_token=valid_refresh_token_record.token,
                         client_id=sample_client.client_id,
-                        client_secret=sample_client.client_secret,
+                        client_secret="test_secret",
                         scope=None,
                     )
 
@@ -1094,7 +1095,7 @@ class TestRefreshTokenGrantEndpoint:
                     db=mock_db,
                     refresh_token="invalid_token",
                     client_id=sample_client_id,
-                    client_secret=sample_client.client_secret,
+                    client_secret="test_secret",
                     scope=None,
                 )
 
@@ -1129,7 +1130,7 @@ class TestRefreshTokenGrantEndpoint:
                         db=mock_db,
                         refresh_token=valid_refresh_token_record.token,
                         client_id=sample_client.client_id,
-                        client_secret=sample_client.client_secret,
+                        client_secret="test_secret",
                         scope=reduced_scope,
                     )
 
@@ -1159,7 +1160,7 @@ class TestRefreshTokenGrantEndpoint:
                     db=mock_db,
                     refresh_token=valid_refresh_token_record.token,
                     client_id=sample_client.client_id,
-                    client_secret=sample_client.client_secret,
+                    client_secret="test_secret",
                     scope=invalid_scope,
                 )
 
@@ -1191,7 +1192,7 @@ class TestRefreshTokenGrantEndpoint:
                         db=mock_db,
                         refresh_token=valid_refresh_token_record.token,
                         client_id=sample_client.client_id,
-                        client_secret=sample_client.client_secret,
+                        client_secret="test_secret",
                         scope=None,  # No scope provided
                     )
 
@@ -1236,7 +1237,7 @@ def test_refresh_token_grant_without_redirect_uri_succeeds(
             db=mock_db,
             refresh_token="valid_refresh_token_123",
             client_id=sample_client.client_id,
-            client_secret=sample_client.client_secret,
+            client_secret="test_secret",
             scope=None,
         )
 

@@ -14,6 +14,7 @@ from app.oauth.jwt import (
 from app.oauth.models import AuthorizationCode, OAuthClient, RefreshToken
 from app.oauth.pkce import verify_s256_code_verifier
 from app.oauth.utils import create_token_response
+from app.services.auth import verify_password
 
 from ..config import settings
 
@@ -203,7 +204,7 @@ def exchange_code_for_tokens(
     # Validate client credentials
     client = db.query(OAuthClient).filter(OAuthClient.client_id == client_id).first()
 
-    if not client or client.client_secret != client_secret:
+    if not client or not verify_password(client_secret, client.client_secret):
         raise OAuthError(
             error_code=OAuthErrorCode.INVALID_CLIENT,
             description="Client authentication failed",
@@ -343,7 +344,7 @@ def handle_refresh_token_grant(
     # Validate client credentials
     client = db.query(OAuthClient).filter(OAuthClient.client_id == client_id).first()
 
-    if not client or client.client_secret != client_secret:
+    if not client or not verify_password(client_secret, client.client_secret):
         raise OAuthError(
             error_code=OAuthErrorCode.INVALID_CLIENT,
             description="Client authentication failed",
