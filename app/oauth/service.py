@@ -180,9 +180,9 @@ def exchange_code_for_tokens(
     code: str,
     client_id: str,
     client_secret: str,
-    redirect_uri: str,
+    redirect_uri: Optional[str] = None,
     code_verifier: Optional[str] = None,
-) -> str:
+) -> tuple[str, str]:
     """
     Exchange an authorization code for access token and refresh tokens.
 
@@ -231,12 +231,22 @@ def exchange_code_for_tokens(
         raise OAuthError(
             error_code=OAuthErrorCode.INVALID_GRANT, description="Client ID mismatch"
         )
-
-    # Validate redirect_uri matches
-    if auth_code.redirect_uri != redirect_uri:
-        raise OAuthError(
-            error_code=OAuthErrorCode.INVALID_GRANT, description="Redirect URI mismatch"
-        )
+    # Validate redirect_uri matches if it was provided in the authorization request
+    # Per RFC 6749 Section 4.1.3:
+    # "REQUIRED, if the "redirect_uri" parameter was included in the
+    # authorization request as described in Section 4.1.1, and their
+    # values MUST be identical."
+    if auth_code.redirect_uri:
+        if not redirect_uri:
+            raise OAuthError(
+                error_code=OAuthErrorCode.INVALID_GRANT,
+                description="Missing required parameter: redirect_uri",
+            )
+        if auth_code.redirect_uri != redirect_uri:
+            raise OAuthError(
+                error_code=OAuthErrorCode.INVALID_GRANT,
+                description="Redirect URI mismatch",
+            )
 
     # Validate PKCE code_verifier per RFC 7636 Section 4.6
     # Note: Authorization endpoint enforces S256-only, so we only need to verify
@@ -280,7 +290,7 @@ def handle_authorization_code_grant(
     code: Optional[str],
     client_id: str,
     client_secret: str,
-    redirect_uri: str,
+    redirect_uri: Optional[str],
     code_verifier: Optional[str],
     scope: Optional[str],
 ):

@@ -1194,3 +1194,46 @@ class TestRefreshTokenGrantEndpoint:
 
         # Verify original scope is used
         assert result["scope"] == sample_scope
+
+
+# =============================================================================
+# RFC Compliance Tests
+# =============================================================================
+
+
+def test_refresh_token_grant_without_redirect_uri_succeeds(
+    mock_db, sample_client, valid_refresh_token_record
+):
+    """
+    Verify that refresh_token grant does NOT require redirect_uri.
+    Per RFC 6749 §6.
+    """
+    mock_query = MagicMock()
+    # First call: validate client, Second call: validate_refresh_token
+    mock_query.filter.return_value.first.side_effect = [
+        sample_client,
+        valid_refresh_token_record,
+    ]
+    mock_db.query.return_value = mock_query
+
+    with (
+        patch(
+            "app.oauth.service.validate_refresh_token",
+            return_value=valid_refresh_token_record,
+        ),
+        patch(
+            "app.oauth.service.create_access_token",
+            return_value=("access", "jti"),
+        ),
+        patch("app.oauth.service.rotate_refresh_token", return_value="rotated"),
+    ):
+        # Call WITHOUT redirect_uri
+        response = handle_refresh_token_grant(
+            db=mock_db,
+            refresh_token="valid_refresh_token_123",
+            client_id=sample_client.client_id,
+            client_secret=sample_client.client_secret,
+            scope=None,
+        )
+
+    assert response.status_code == 200

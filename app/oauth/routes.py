@@ -377,7 +377,7 @@ def token(
     code: Optional[str] = Form(None),
     client_id: str = Form(...),
     client_secret: str = Form(...),
-    redirect_uri: str = Form(...),
+    redirect_uri: Optional[str] = Form(None),
     code_verifier: Optional[str] = Form(None),
     refresh_token: Optional[str] = Form(None),
     scope: Optional[str] = Form(None),
