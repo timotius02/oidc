@@ -13,6 +13,7 @@ from app.oauth.jwt import (
 )
 from app.oauth.models import AuthorizationCode, OAuthClient, RefreshToken
 from app.oauth.pkce import verify_s256_code_verifier
+from app.oauth.utils import create_token_response
 
 from ..config import settings
 
@@ -300,13 +301,15 @@ def handle_authorization_code_grant(
         code_verifier=code_verifier,
     )
 
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "expires_in": settings.ACCESS_TOKEN_EXPIRE_SECONDS,
-        "refresh_token": refresh_token,
-        "scope": scope,
-    }
+    return create_token_response(
+        content={
+            "access_token": access_token,
+            "token_type": "bearer",
+            "expires_in": settings.ACCESS_TOKEN_EXPIRE_SECONDS,
+            "refresh_token": refresh_token,
+            "scope": scope,
+        }
+    )
 
 
 def handle_refresh_token_grant(
@@ -366,13 +369,15 @@ def handle_refresh_token_grant(
         scope=final_scope,
     )
 
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "expires_in": settings.ACCESS_TOKEN_EXPIRE_SECONDS,
-        "refresh_token": new_refresh_token,
-        "scope": final_scope,
-    }
+    return create_token_response(
+        content={
+            "access_token": access_token,
+            "token_type": "bearer",
+            "expires_in": settings.ACCESS_TOKEN_EXPIRE_SECONDS,
+            "refresh_token": new_refresh_token,
+            "scope": final_scope,
+        }
+    )
 
 
 def revoke_token(
