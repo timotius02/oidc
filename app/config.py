@@ -11,5 +11,7 @@ class Settings(BaseSettings):
     PRIVATE_KEY_PATH: str = "private.pem"
     PUBLIC_KEY_PATH: str = "public.pem"
 
+    SESSION_SECRET_KEY: str = "dev-secret-session"
+
 
 settings = Settings()
