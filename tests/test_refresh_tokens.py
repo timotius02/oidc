@@ -10,6 +10,7 @@ Tests cover:
 - Refresh token grant endpoint
 """
 
+import json
 import uuid
 from datetime import datetime, timedelta
 from unittest.mock import MagicMock, patch
@@ -1015,7 +1016,7 @@ class TestRefreshTokenGrantEndpoint:
             ):
                 with patch(
                     "app.oauth.service.create_access_token",
-                    return_value="new_access_token",
+                    return_value=("new_access_token", "jti"),
                 ):
                     result = handle_refresh_token_grant(
                         db=mock_db,
@@ -1026,11 +1027,12 @@ class TestRefreshTokenGrantEndpoint:
                     )
 
         # Verify response structure
-        assert result["access_token"] == "new_access_token"
-        assert result["token_type"] == "bearer"
-        assert result["expires_in"] == settings.ACCESS_TOKEN_EXPIRE_SECONDS
-        assert result["refresh_token"] == "new_refresh_token"
-        assert result["scope"] == sample_scope
+        data = json.loads(result.body)
+        assert data["access_token"] == "new_access_token"
+        assert data["token_type"] == "bearer"
+        assert data["expires_in"] == settings.ACCESS_TOKEN_EXPIRE_SECONDS
+        assert data["refresh_token"] == "new_refresh_token"
+        assert data["scope"] == sample_scope
 
     def test_error_for_missing_refresh_token_parameter(
         self, mock_db, sample_client, sample_client_id
@@ -1121,7 +1123,7 @@ class TestRefreshTokenGrantEndpoint:
             ):
                 with patch(
                     "app.oauth.service.create_access_token",
-                    return_value="new_access_token",
+                    return_value=("new_access_token", "jti"),
                 ):
                     result = handle_refresh_token_grant(
                         db=mock_db,
@@ -1132,7 +1134,8 @@ class TestRefreshTokenGrantEndpoint:
                     )
 
         # Verify reduced scope is returned
-        assert result["scope"] == reduced_scope
+        data = json.loads(result.body)
+        assert data["scope"] == reduced_scope
 
     def test_error_when_requesting_scope_not_in_original_grant(
         self, mock_db, valid_refresh_token_record, sample_client
@@ -1182,7 +1185,7 @@ class TestRefreshTokenGrantEndpoint:
             ):
                 with patch(
                     "app.oauth.service.create_access_token",
-                    return_value="new_access_token",
+                    return_value=("new_access_token", "jti"),
                 ):
                     result = handle_refresh_token_grant(
                         db=mock_db,
@@ -1193,7 +1196,8 @@ class TestRefreshTokenGrantEndpoint:
                     )
 
         # Verify original scope is used
-        assert result["scope"] == sample_scope
+        data = json.loads(result.body)
+        assert data["scope"] == sample_scope
 
 
 # =============================================================================
