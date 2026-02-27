@@ -108,7 +108,7 @@ class TestCreateAuthorizationErrorResponse:
 
         assert query_params["error"] == ["unsupported_response_type"]
         assert query_params["error_description"] == [
-            "Only 'code' response type supported"
+            "Only 'code' response type is supported"
         ]
 
     def test_error_response_with_state(self):

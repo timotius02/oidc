@@ -10,8 +10,16 @@ Tests cover:
 import base64
 import hashlib
 import secrets
+from datetime import datetime, timedelta
+from unittest.mock import MagicMock
 
+import pytest
+from sqlalchemy.orm import Session
+
+from app.oauth.errors import OAuthError
+from app.oauth.models import AuthorizationCode, OAuthClient
 from app.oauth.pkce import verify_s256_code_verifier
+from app.oauth.service import exchange_code_for_tokens
 
 
 class TestVerifyS256CodeVerifier:
@@ -187,3 +195,65 @@ class TestPKCERFC7636Compliance:
 
         # Verify our function works with this challenge
         assert verify_s256_code_verifier(verifier, challenge) is True
+
+
+class TestPKCEValidation:
+    """Tests for PKCE validation logic in the service layer."""
+
+    @pytest.fixture
+    def mock_db(self):
+        return MagicMock(spec=Session)
+
+    def test_code_verifier_length_too_short(self, mock_db):
+        """RFC 7636 §4.1: code_verifier MUST be at least 43 characters."""
+        client = OAuthClient(client_id="test_client", client_type="public")
+        auth_code = AuthorizationCode(
+            code="test_code",
+            client_id="test_client",
+            code_challenge="challenge",
+            expires_at=datetime.utcnow() + timedelta(minutes=10),
+            redirect_uri="http://localhost",
+        )
+
+        mock_query = MagicMock()
+        mock_query.filter.return_value.first.side_effect = [client, auth_code]
+        mock_db.query.return_value = mock_query
+
+        # Verifier too short (42 chars)
+        with pytest.raises(OAuthError) as exc:
+            exchange_code_for_tokens(
+                db=mock_db,
+                code="test_code",
+                client_id="test_client",
+                code_verifier="a" * 42,
+                redirect_uri="http://localhost",
+            )
+        assert exc.value.error_code.value == "invalid_grant"
+        assert "43-128" in exc.value.description
+
+    def test_code_verifier_length_too_long(self, mock_db):
+        """RFC 7636 §4.1: code_verifier MUST be at most 128 characters."""
+        client = OAuthClient(client_id="test_client", client_type="public")
+        auth_code = AuthorizationCode(
+            code="test_code",
+            client_id="test_client",
+            code_challenge="challenge",
+            expires_at=datetime.utcnow() + timedelta(minutes=10),
+            redirect_uri="http://localhost",
+        )
+
+        mock_query = MagicMock()
+        mock_query.filter.return_value.first.side_effect = [client, auth_code]
+        mock_db.query.return_value = mock_query
+
+        # Verifier too long (129 chars)
+        with pytest.raises(OAuthError) as exc:
+            exchange_code_for_tokens(
+                db=mock_db,
+                code="test_code",
+                client_id="test_client",
+                code_verifier="a" * 129,
+                redirect_uri="http://localhost",
+            )
+        assert exc.value.error_code.value == "invalid_grant"
+        assert "43-128" in exc.value.description

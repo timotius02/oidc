@@ -70,11 +70,15 @@ class OAuthError(Exception):
         description: Optional[str] = None,
         uri: Optional[str] = None,
         state: Optional[str] = None,
+        status_code: int = 400,
+        headers: Optional[dict] = None,
     ):
         self.error_code = error_code
         self.description = description
         self.uri = uri
         self.state = state
+        self.status_code = status_code
+        self.headers = headers or {}
         super().__init__(description or error_code.value)
 
 
@@ -133,6 +137,8 @@ def create_token_error_response(
     error_code: OAuthErrorCode,
     description: Optional[str] = None,
     uri: Optional[str] = None,
+    status_code: int = 400,
+    headers: Optional[dict] = None,
 ) -> JSONResponse:
     """
     Create a JSON error response for the token endpoint.
@@ -164,10 +170,15 @@ def create_token_error_response(
     if uri:
         content["error_uri"] = uri
 
+    # Merge with default headers
+    resp_headers = {"Cache-Control": "no-store", "Pragma": "no-cache"}
+    if headers:
+        resp_headers.update(headers)
+
     return JSONResponse(
-        status_code=400,
+        status_code=status_code,
         content=content,
-        headers={"Cache-Control": "no-store", "Pragma": "no-cache"},
+        headers=resp_headers,
     )
 
 
@@ -193,5 +204,9 @@ def register_oauth_exception_handlers(app) -> None:
     async def oauth_error_handler(request, exc: OAuthError):
         """Handle OAuth errors and return proper error responses."""
         return create_token_error_response(
-            error_code=exc.error_code, description=exc.description, uri=exc.uri
+            error_code=exc.error_code,
+            description=exc.description,
+            uri=exc.uri,
+            status_code=exc.status_code,
+            headers=exc.headers,
         )

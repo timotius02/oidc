@@ -1,3 +1,4 @@
+import base64
 import secrets
 from typing import Optional
 
@@ -20,6 +21,7 @@ from app.oauth.service import (
     revoke_token,
 )
 from app.oauth.utils import get_current_user
+from app.services.auth import verify_password
 from app.templates_config import templates
 
 router = APIRouter(prefix="/oauth", tags=["oauth"])
@@ -371,12 +373,38 @@ def deny_consent(
     )
 
 
+def get_client_credentials(
+    request: Request,
+    client_id: Optional[str] = None,
+    client_secret: Optional[str] = None,
+) -> tuple[Optional[str], Optional[str], bool]:
+    """
+    Extract client credentials from Authorization header or form parameters.
+    Per RFC 6749 Section 2.3.1.
+
+    Returns:
+        Tuple of (client_id, client_secret, used_basic_auth)
+    """
+    auth_header = request.headers.get("Authorization")
+    if auth_header and auth_header.lower().startswith("basic "):
+        try:
+            auth_decoded = base64.b64decode(auth_header[6:]).decode("utf-8")
+            if ":" in auth_decoded:
+                cid, csec = auth_decoded.split(":", 1)
+                return cid, csec, True
+        except Exception:
+            pass
+
+    return client_id, client_secret, False
+
+
 @router.post("/token")
 def token(
+    request: Request,
     grant_type: str = Form(...),
     code: Optional[str] = Form(None),
-    client_id: str = Form(...),
-    client_secret: str = Form(...),
+    client_id: Optional[str] = Form(None),
+    client_secret: Optional[str] = Form(None),
     redirect_uri: Optional[str] = Form(None),
     code_verifier: Optional[str] = Form(None),
     refresh_token: Optional[str] = Form(None),
@@ -395,37 +423,58 @@ def token(
     - refresh_token grant (RFC 6749 §6)
 
     """
-    if grant_type == "authorization_code":
-        return handle_authorization_code_grant(
-            db=db,
-            code=code,
-            client_id=client_id,
-            client_secret=client_secret,
-            redirect_uri=redirect_uri,
-            code_verifier=code_verifier,
-            scope=scope,
-        )
-    elif grant_type == "refresh_token":
-        return handle_refresh_token_grant(
-            db=db,
-            refresh_token=refresh_token,
-            client_id=client_id,
-            client_secret=client_secret,
-            scope=scope,
-        )
-    else:
+    # Extract credentials (header takes precedence)
+    client_id, client_secret, used_basic = get_client_credentials(
+        request, client_id, client_secret
+    )
+
+    if not client_id:
         raise OAuthError(
-            error_code=OAuthErrorCode.UNSUPPORTED_GRANT_TYPE,
-            description=f"Unsupported grant type: {grant_type}",
+            error_code=OAuthErrorCode.INVALID_CLIENT,
+            description="Client authentication failed (missing client_id)",
+            status_code=401,
+            headers={"WWW-Authenticate": 'Basic realm="oauth"'} if used_basic else None,
         )
+
+    try:
+        if grant_type == "authorization_code":
+            return handle_authorization_code_grant(
+                db=db,
+                code=code,
+                client_id=client_id,
+                client_secret=client_secret,
+                redirect_uri=redirect_uri,
+                code_verifier=code_verifier,
+                scope=scope,
+            )
+        elif grant_type == "refresh_token":
+            return handle_refresh_token_grant(
+                db=db,
+                refresh_token=refresh_token,
+                client_id=client_id,
+                client_secret=client_secret,
+                scope=scope,
+            )
+    except OAuthError as e:
+        if used_basic and e.error_code == OAuthErrorCode.INVALID_CLIENT:
+            if e.headers is None:
+                e.headers = {}
+            e.headers["WWW-Authenticate"] = 'Basic realm="oauth"'
+        raise e
+
+    raise OAuthError(
+        error_code=OAuthErrorCode.UNSUPPORTED_GRANT_TYPE,
+        description=f"Unsupported grant type: {grant_type}",
+    )
 
 
 @router.post("/revoke")
 def revoke(
+    request: Request,
     token: str = Form(...),
     token_type_hint: Optional[str] = Form(None),
-    client_id: str = Form(...),
-    client_secret: str = Form(...),
+    client_id: Optional[str] = Form(None),
+    client_secret: Optional[str] = Form(None),
     db: Session = Depends(get_db),
 ):
     """
@@ -440,13 +489,28 @@ def revoke(
     guidance of allowing access tokens to expire naturally without revocation due to
     their short lifespan and stateless nature.
     """
-    # Validate client credentials
-    client = db.query(OAuthClient).filter(OAuthClient.client_id == client_id).first()
+    # Extract credentials (header takes precedence)
+    client_id, client_secret, used_basic = get_client_credentials(
+        request, client_id, client_secret
+    )
 
-    if not client or client.client_secret != client_secret:
+    if not client_id:
         raise OAuthError(
             error_code=OAuthErrorCode.INVALID_CLIENT,
             description="Invalid client credentials",
+            status_code=401,
+            headers={"WWW-Authenticate": 'Basic realm="oauth"'},
+        )
+
+    # Validate client credentials
+    client = db.query(OAuthClient).filter(OAuthClient.client_id == client_id).first()
+
+    if not client or not verify_password(client_secret, client.client_secret):
+        raise OAuthError(
+            error_code=OAuthErrorCode.INVALID_CLIENT,
+            description="Invalid client credentials",
+            status_code=401,
+            headers={"WWW-Authenticate": 'Basic realm="oauth"'},
         )
 
     # Attempt to revoke the token (access or refresh)

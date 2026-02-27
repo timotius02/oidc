@@ -13,8 +13,13 @@ from datetime import datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
-from sqlalchemy.orm import Session
+from fastapi.testclient import TestClient
+from sqlalchemy import create_engine
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import StaticPool
 
+from app.db import Base, get_db
+from app.main import app
 from app.oauth.models import OAuthClient, RefreshToken
 from app.oauth.service import revoke_token
 from app.services.auth import hash_password
@@ -357,3 +362,77 @@ class TestRevokeTokenChainIntegration:
         assert token2.is_active == "revoked"
         assert token3.is_active == "revoked"
         assert "user_revoked" in token1.revoked_reason
+
+
+# =============================================================================
+# Integration Tests
+# =============================================================================
+
+
+class TestRevokeTokenIntegration:
+    """Integration tests for the /oauth/revoke endpoint."""
+
+    @pytest.fixture(autouse=True)
+    def setup_test_client(self):
+        SQLALCHEMY_DATABASE_URL = "sqlite://"
+        self.engine = create_engine(
+            SQLALCHEMY_DATABASE_URL,
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+        )
+        self.TestingSessionLocal = sessionmaker(
+            autocommit=False, autoflush=False, bind=self.engine
+        )
+        Base.metadata.create_all(bind=self.engine)
+
+        def override_get_db():
+            try:
+                db = self.TestingSessionLocal()
+                yield db
+            finally:
+                db.close()
+
+        app.dependency_overrides[get_db] = override_get_db
+        self.client = TestClient(app)
+        yield
+        app.dependency_overrides.clear()
+
+    @pytest.fixture
+    def db_session(self):
+        db = self.TestingSessionLocal()
+        try:
+            yield db
+        finally:
+            db.close()
+
+    def test_revocation_invalid_client_returns_401_with_www_authenticate(
+        self, db_session
+    ):
+        """RFC 7009 §2.1: MUST return 401 for failed client authentication."""
+        client_id = "test_client"
+        hashed_secret = hash_password("test_secret")
+        db_client = OAuthClient(
+            client_id=client_id,
+            client_secret=hashed_secret,
+            redirect_uri="http://localhost",
+            client_type="confidential",
+            name="Test Client",
+            scopes="openid",
+        )
+        db_session.add(db_client)
+        db_session.commit()
+
+        # Wrong secret
+        response = self.client.post(
+            "/oauth/revoke",
+            data={
+                "token": "some_token",
+                "client_id": client_id,
+                "client_secret": "wrong_secret",
+            },
+        )
+
+        assert response.status_code == 401
+        assert response.json()["error"] == "invalid_client"
+        assert "WWW-Authenticate" in response.headers
+        assert 'Basic realm="oauth"' in response.headers["WWW-Authenticate"]

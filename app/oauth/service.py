@@ -180,10 +180,10 @@ def exchange_code_for_tokens(
     db: Session,
     code: str,
     client_id: str,
-    client_secret: str,
+    client_secret: Optional[str] = None,
     redirect_uri: Optional[str] = None,
     code_verifier: Optional[str] = None,
-) -> tuple[str, str]:
+) -> tuple[str, str, str]:
     """
     Exchange an authorization code for access token and refresh tokens.
 
@@ -204,11 +204,32 @@ def exchange_code_for_tokens(
     # Validate client credentials
     client = db.query(OAuthClient).filter(OAuthClient.client_id == client_id).first()
 
-    if not client or not verify_password(client_secret, client.client_secret):
+    if not client:
         raise OAuthError(
             error_code=OAuthErrorCode.INVALID_CLIENT,
             description="Client authentication failed",
+            status_code=401,
         )
+
+    # Confidential clients MUST provide a valid secret.
+    # Public clients MAY provide one (if they have it), but it's optional.
+    if client.client_type == "confidential":
+        if not client_secret or not verify_password(
+            client_secret, client.client_secret
+        ):
+            raise OAuthError(
+                error_code=OAuthErrorCode.INVALID_CLIENT,
+                description="Client authentication failed",
+                status_code=401,
+            )
+    elif client_secret:
+        # If secret provided for public client, it must be valid.
+        if not verify_password(client_secret, client.client_secret):
+            raise OAuthError(
+                error_code=OAuthErrorCode.INVALID_CLIENT,
+                description="Client authentication failed",
+                status_code=401,
+            )
 
     # Find the authorization code
     auth_code = (
@@ -250,18 +271,25 @@ def exchange_code_for_tokens(
             )
 
     # Validate PKCE code_verifier per RFC 7636 Section 4.6
-    # Note: Authorization endpoint enforces S256-only, so we only need to verify
+    # PKCE validation
     if auth_code.code_challenge:
         if not code_verifier:
             raise OAuthError(
-                error_code=OAuthErrorCode.INVALID_REQUEST,
-                description="Missing required parameter: code_verifier",
+                error_code=OAuthErrorCode.INVALID_GRANT,
+                description="Missing code_verifier for PKCE",
+            )
+
+        # RFC 7636 §4.1: code_verifier MUST be 43-128 characters
+        if not (43 <= len(code_verifier) <= 128):
+            raise OAuthError(
+                error_code=OAuthErrorCode.INVALID_GRANT,
+                description="Invalid code_verifier length (must be 43-128 characters)",
             )
 
         if not verify_s256_code_verifier(code_verifier, auth_code.code_challenge):
             raise OAuthError(
                 error_code=OAuthErrorCode.INVALID_GRANT,
-                description="PKCE verification failed: code_verifier mismatch",
+                description="Invalid code_verifier",
             )
 
     # Create access token
@@ -283,14 +311,14 @@ def exchange_code_for_tokens(
     db.delete(auth_code)
     db.commit()
 
-    return access_token, refresh_token
+    return access_token, refresh_token, auth_code.scope
 
 
 def handle_authorization_code_grant(
     db: Session,
     code: Optional[str],
     client_id: str,
-    client_secret: str,
+    client_secret: Optional[str],
     redirect_uri: Optional[str],
     code_verifier: Optional[str],
     scope: Optional[str],
@@ -303,7 +331,7 @@ def handle_authorization_code_grant(
         )
 
     # Exchange code for tokens
-    access_token, refresh_token = exchange_code_for_tokens(
+    access_token, refresh_token, granted_scope = exchange_code_for_tokens(
         db=db,
         code=code,
         client_id=client_id,
@@ -318,7 +346,7 @@ def handle_authorization_code_grant(
             "token_type": "bearer",
             "expires_in": settings.ACCESS_TOKEN_EXPIRE_SECONDS,
             "refresh_token": refresh_token,
-            "scope": scope,
+            "scope": granted_scope,  # RFC 6749 §5.1: MUST use granted scope
         }
     )
 
@@ -327,7 +355,7 @@ def handle_refresh_token_grant(
     db: Session,
     refresh_token: Optional[str],
     client_id: str,
-    client_secret: str,
+    client_secret: Optional[str],
     scope: Optional[str],
 ):
     """
@@ -344,12 +372,31 @@ def handle_refresh_token_grant(
     # Validate client credentials
     client = db.query(OAuthClient).filter(OAuthClient.client_id == client_id).first()
 
-    if not client or not verify_password(client_secret, client.client_secret):
+    if not client:
         raise OAuthError(
             error_code=OAuthErrorCode.INVALID_CLIENT,
             description="Client authentication failed",
+            status_code=401,
         )
 
+    # Confidential clients MUST provide a valid secret.
+    if client.client_type == "confidential":
+        if not client_secret or not verify_password(
+            client_secret, client.client_secret
+        ):
+            raise OAuthError(
+                error_code=OAuthErrorCode.INVALID_CLIENT,
+                description="Client authentication failed",
+                status_code=401,
+            )
+    elif client_secret:
+        # If secret provided for public client, it must be valid.
+        if not verify_password(client_secret, client.client_secret):
+            raise OAuthError(
+                error_code=OAuthErrorCode.INVALID_CLIENT,
+                description="Client authentication failed",
+                status_code=401,
+            )
     # Validate refresh token
     token_record = validate_refresh_token(
         db=db,
