@@ -1,3 +1,5 @@
+import base64
+import hashlib
 import uuid
 from datetime import datetime, timedelta
 
@@ -55,6 +57,58 @@ def get_token_jti(token: str) -> str:
     """Extract jti from token without full validation (for revocation lookup)."""
     unverified = jwt.get_unverified_claims(token)
     return unverified.get("jti", "")
+
+
+def compute_at_hash(access_token: str) -> str:
+    """
+    Compute at_hash claim for ID token per OIDC Core §3.2.2.9.
+
+    SHA256 hash of the access token, left-truncated to 128 bits,
+    then base64url-encoded.
+    """
+    sha256_hash = hashlib.sha256(access_token.encode()).digest()
+    truncated = sha256_hash[:16]
+    return base64.urlsafe_b64encode(truncated).rstrip(b"=").decode()
+
+
+def create_id_token(
+    subject: str,
+    audience: str,
+    nonce: str | None = None,
+    access_token: str | None = None,
+) -> str:
+    """
+    Create an OIDC ID token JWT.
+
+    Required claims per OpenID Connect Core §2:
+    - iss: Issuer identifier
+    - sub: Subject identifier (user ID)
+    - aud: Audience (client ID)
+    - exp: Expiration time
+    - iat: Issued at time
+    - at_hash: Access token hash (if access_token provided)
+
+    Optional claims:
+    - nonce: Value to bind ID token to authentication request
+    """
+    now = datetime.utcnow()
+
+    payload = {
+        "iss": settings.JWT_ISSUER,
+        "sub": subject,
+        "aud": audience,
+        "iat": now,
+        "exp": now + timedelta(seconds=settings.ID_TOKEN_EXPIRE_SECONDS),
+    }
+
+    if nonce:
+        payload["nonce"] = nonce
+
+    if access_token:
+        payload["at_hash"] = compute_at_hash(access_token)
+
+    token = jwt.encode(payload, PRIVATE_KEY, algorithm="RS256")
+    return token
 
 
 def revoke_token_chain(

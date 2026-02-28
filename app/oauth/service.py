@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from app.oauth.errors import OAuthError, OAuthErrorCode
 from app.oauth.jwt import (
     create_access_token,
+    create_id_token,
     revoke_token_chain,
     rotate_refresh_token,
     validate_refresh_token,
@@ -183,7 +184,7 @@ def exchange_code_for_tokens(
     client_secret: Optional[str] = None,
     redirect_uri: Optional[str] = None,
     code_verifier: Optional[str] = None,
-) -> tuple[str, str, str]:
+) -> tuple[str, str | None, str, str]:
     """
     Exchange an authorization code for access token and refresh tokens.
 
@@ -299,6 +300,16 @@ def exchange_code_for_tokens(
         scope=auth_code.scope,
     )
 
+    # Create ID token if openid scope is requested
+    id_token = None
+    if auth_code.scope and "openid" in auth_code.scope.split():
+        id_token = create_id_token(
+            subject=str(auth_code.user_id),
+            audience=auth_code.client_id,
+            nonce=auth_code.nonce,
+            access_token=access_token,
+        )
+
     # Create refresh token
     refresh_token = create_refresh_token(
         db=db,
@@ -311,7 +322,7 @@ def exchange_code_for_tokens(
     db.delete(auth_code)
     db.commit()
 
-    return access_token, refresh_token, auth_code.scope
+    return access_token, id_token, refresh_token, auth_code.scope
 
 
 def handle_authorization_code_grant(
@@ -331,7 +342,7 @@ def handle_authorization_code_grant(
         )
 
     # Exchange code for tokens
-    access_token, refresh_token, granted_scope = exchange_code_for_tokens(
+    access_token, id_token, refresh_token, granted_scope = exchange_code_for_tokens(
         db=db,
         code=code,
         client_id=client_id,
@@ -340,15 +351,18 @@ def handle_authorization_code_grant(
         code_verifier=code_verifier,
     )
 
-    return create_token_response(
-        content={
-            "access_token": access_token,
-            "token_type": "bearer",
-            "expires_in": settings.ACCESS_TOKEN_EXPIRE_SECONDS,
-            "refresh_token": refresh_token,
-            "scope": granted_scope,  # RFC 6749 §5.1: MUST use granted scope
-        }
-    )
+    response_content = {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "expires_in": settings.ACCESS_TOKEN_EXPIRE_SECONDS,
+        "refresh_token": refresh_token,
+        "scope": granted_scope,
+    }
+
+    if id_token:
+        response_content["id_token"] = id_token
+
+    return create_token_response(content=response_content)
 
 
 def handle_refresh_token_grant(

@@ -5,6 +5,7 @@ class Settings(BaseSettings):
     DATABASE_URL: str = "postgresql://postgres:postgres@localhost:5432/authdb"
     JWT_ISSUER: str = "http://localhost:8000"
     ACCESS_TOKEN_EXPIRE_SECONDS: int = 300  # 5 minutes
+    ID_TOKEN_EXPIRE_SECONDS: int = 3600  # 1 hour
     REFRESH_TOKEN_EXPIRE_SECONDS: int = 7 * 24 * 3600
     CODE_EXPIRY_SECONDS: int = 600
 
