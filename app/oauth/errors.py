@@ -49,6 +49,10 @@ class OAuthErrorCode(str, Enum):
     INVALID_GRANT = "invalid_grant"
     UNSUPPORTED_GRANT_TYPE = "unsupported_grant_type"
 
+    # RFC 6750 - Bearer Token Usage (UserInfo endpoint)
+    INVALID_TOKEN = "invalid_token"
+    INSUFFICIENT_SCOPE = "insufficient_scope"
+
 
 class OAuthError(Exception):
     """

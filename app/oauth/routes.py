@@ -16,6 +16,7 @@ from app.oauth.models import OAuthClient
 from app.oauth.service import (
     create_authorization_code,
     get_scope_descriptions,
+    get_userinfo_claims,
     handle_authorization_code_grant,
     handle_refresh_token_grant,
     revoke_token,
@@ -518,3 +519,40 @@ def revoke(
 
     # Per RFC 7009 Section 2.2, respond with HTTP 200 even if the token is invalid
     return {"success": True}
+
+
+@router.get("/userinfo")
+def userinfo(
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    """
+    OIDC UserInfo Endpoint per OpenID Connect Core §5.3.
+
+    Returns claims about the authenticated user based on granted scopes.
+    Protected by access token (Bearer authentication).
+    """
+    auth_header = request.headers.get("Authorization")
+
+    if not auth_header or not auth_header.lower().startswith("bearer "):
+        raise HTTPException(
+            status_code=401,
+            detail="Missing or invalid Authorization header",
+            headers={"WWW-Authenticate": 'Bearer realm="userinfo"'},
+        )
+
+    access_token = auth_header[7:]  # Remove "Bearer " prefix
+
+    try:
+        claims = get_userinfo_claims(db, access_token)
+    except OAuthError as e:
+        # Per RFC 6750, insufficient_scope returns 403, others return 401
+        status_code = 403 if e.error_code == OAuthErrorCode.INSUFFICIENT_SCOPE else 401
+        auth_header = f'Bearer realm="userinfo", error="{e.error_code.value}"'
+        raise HTTPException(
+            status_code=status_code,
+            detail=e.description,
+            headers={"WWW-Authenticate": auth_header},
+        )
+
+    return claims

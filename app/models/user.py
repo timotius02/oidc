@@ -24,6 +24,10 @@ class User(Base):
         nullable=False,
     )
 
+    name: Mapped[str] = mapped_column(String, nullable=True)
+    family_name: Mapped[str] = mapped_column(String, nullable=True)
+    given_name: Mapped[str] = mapped_column(String, nullable=True)
+
     password_hash: Mapped[str] = mapped_column(String, nullable=False)
 
     created_at: Mapped[datetime] = mapped_column(
