@@ -11,4 +11,5 @@ wheels/
 
 # Sensitive files
 private.pem
+private-next.pem
 .env

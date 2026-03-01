@@ -3,6 +3,7 @@ import hashlib
 import uuid
 from datetime import datetime, timedelta
 
+from cryptography.hazmat.primitives import serialization
 from jose import jwt
 from sqlalchemy.orm import Session
 
@@ -11,11 +12,64 @@ from app.oauth.models import RefreshToken
 
 from ..config import settings
 
-with open(settings.PRIVATE_KEY_PATH) as f:
-    PRIVATE_KEY = f.read()
 
-with open(settings.PUBLIC_KEY_PATH) as f:
-    PUBLIC_KEY = f.read()
+class RSAKey:
+    def __init__(self, private_path: str, public_path: str, kid: str):
+        self.kid = kid
+        with open(private_path) as f:
+            self.private_key = f.read()
+        with open(public_path) as f:
+            self.public_key = f.read()
+        self._public_key_obj = None
+
+    @property
+    def public_key_obj(self):
+        if self._public_key_obj is None:
+            self._public_key_obj = serialization.load_pem_public_key(
+                self.public_key.encode()
+            )
+        return self._public_key_obj
+
+    def to_jwk(self) -> dict:
+        from cryptography.hazmat.primitives.asymmetric import rsa
+
+        pubkey = self.public_key_obj
+        if not isinstance(pubkey, rsa.RSAPublicKey):
+            raise ValueError("Only RSA keys are supported for JWK conversion")
+        numbers = pubkey.public_numbers()
+
+        return {
+            "kty": "RSA",
+            "kid": self.kid,
+            "use": "sig",
+            "alg": "RS256",
+            "n": base64.urlsafe_b64encode(numbers.n.to_bytes(256, byteorder="big"))
+            .rstrip(b"=")
+            .decode(),
+            "e": base64.urlsafe_b64encode(numbers.e.to_bytes(4, byteorder="big"))
+            .rstrip(b"=")
+            .decode(),
+        }
+
+
+# Load current (signing) key
+CURRENT_KEY = RSAKey(
+    private_path=settings.PRIVATE_KEY_PATH,
+    public_path=settings.PUBLIC_KEY_PATH,
+    kid=settings.CURRENT_KEY_ID,
+)
+
+# Load next key (for rotation) if files exist
+try:
+    NEXT_KEY = RSAKey(
+        private_path=settings.NEXT_PRIVATE_KEY_PATH,
+        public_path=settings.NEXT_PUBLIC_KEY_PATH,
+        kid=settings.NEXT_KEY_ID,
+    )
+    KEYS = [CURRENT_KEY, NEXT_KEY]
+except FileNotFoundError:
+    KEYS = [CURRENT_KEY]
+    NEXT_KEY = None
 
 
 def create_access_token(subject: str, audience: str, scope: str) -> tuple[str, str]:
@@ -38,19 +92,30 @@ def create_access_token(subject: str, audience: str, scope: str) -> tuple[str, s
         "jti": jti,
     }
 
-    token = jwt.encode(payload, PRIVATE_KEY, algorithm="RS256")
+    headers = {"kid": CURRENT_KEY.kid}
+    token = jwt.encode(
+        payload, CURRENT_KEY.private_key, algorithm="RS256", headers=headers
+    )
     return token, jti
 
 
 def verify_token(token: str, audience: str) -> dict:
-    payload = jwt.decode(
-        token,
-        PUBLIC_KEY,
-        algorithms=["RS256"],
-        audience=audience,
-        issuer=settings.JWT_ISSUER,
-    )
-    return payload
+    # Try each key to find the correct one
+    for key in KEYS:
+        try:
+            payload = jwt.decode(
+                token,
+                key.public_key,
+                algorithms=["RS256"],
+                audience=audience,
+                issuer=settings.JWT_ISSUER,
+            )
+            return payload
+        except jwt.JWTError:
+            continue
+
+    # If no key worked, raise an error
+    raise jwt.JWTError("Token verification failed with all available keys")
 
 
 def get_token_jti(token: str) -> str:
@@ -107,7 +172,10 @@ def create_id_token(
     if access_token:
         payload["at_hash"] = compute_at_hash(access_token)
 
-    token = jwt.encode(payload, PRIVATE_KEY, algorithm="RS256")
+    headers = {"kid": CURRENT_KEY.kid}
+    token = jwt.encode(
+        payload, CURRENT_KEY.private_key, algorithm="RS256", headers=headers
+    )
     return token
 
 
