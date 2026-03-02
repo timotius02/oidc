@@ -6,6 +6,7 @@ from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from app.models.user import User
+from app.oauth.constants import ClientType
 from app.oauth.errors import OAuthError, OAuthErrorCode
 from app.oauth.jwt import (
     create_access_token,
@@ -218,7 +219,7 @@ def exchange_code_for_tokens(
 
     # Confidential clients MUST provide a valid secret.
     # Public clients MAY provide one (if they have it), but it's optional.
-    if client.client_type == "confidential":
+    if client.client_type == ClientType.CONFIDENTIAL:
         if not client_secret or not verify_password(
             client_secret, client.client_secret
         ):
@@ -398,7 +399,7 @@ def handle_refresh_token_grant(
         )
 
     # Confidential clients MUST provide a valid secret.
-    if client.client_type == "confidential":
+    if client.client_type == ClientType.CONFIDENTIAL:
         if not client_secret or not verify_password(
             client_secret, client.client_secret
         ):
@@ -522,7 +523,7 @@ def get_userinfo_claims(db: Session, access_token: str) -> dict:
     granted_scopes = set(scope.split()) if scope else set()
     if "openid" not in granted_scopes:
         raise OAuthError(
-            error_code=OAuthErrorCode.INVALID_GRANT,
+            error_code=OAuthErrorCode.INSUFFICIENT_SCOPE,
             description="Access token not issued for UserInfo scope",
         )
 

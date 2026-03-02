@@ -7,12 +7,14 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.oauth.constants import GrantType
 from app.oauth.errors import (
     OAuthError,
     OAuthErrorCode,
     create_authorization_error_response,
 )
 from app.oauth.models import OAuthClient
+from app.oauth.schemas import AuthorizationRequest, RevocationRequest, TokenRequest
 from app.oauth.service import (
     create_authorization_code,
     get_scope_descriptions,
@@ -79,14 +81,7 @@ def render_consent_html(
 @router.get("/authorize")
 def authorize(
     request: Request,
-    client_id: Optional[str] = None,
-    redirect_uri: Optional[str] = None,
-    response_type: Optional[str] = None,
-    scope: Optional[str] = None,
-    state: Optional[str] = None,
-    code_challenge: Optional[str] = None,
-    code_challenge_method: Optional[str] = None,
-    nonce: Optional[str] = None,
+    params: AuthorizationRequest = Depends(),
     db: Session = Depends(get_db),
 ):
     """
@@ -99,6 +94,15 @@ def authorize(
     Parameters can be provided via query string or retrieved from session
     (stored during a previous request that triggered login redirect).
     """
+    client_id = params.client_id
+    redirect_uri = params.redirect_uri
+    response_type = params.response_type
+    scope = params.scope
+    state = params.state
+    code_challenge = params.code_challenge
+    code_challenge_method = params.code_challenge_method
+    nonce = params.nonce
+
     # If query params are missing, try to restore from session
     # This handles the post-login redirect case
     if client_id is None or redirect_uri is None or response_type is None:
@@ -245,11 +249,17 @@ def authorize(
     request.session["authorize_params"] = {
         "client_id": client_id,
         "redirect_uri": redirect_uri,
-        "response_type": response_type,
+        "response_type": (
+            response_type.value if hasattr(response_type, "value") else response_type
+        ),
         "scope": scope,
         "state": state,
         "code_challenge": code_challenge,
-        "code_challenge_method": code_challenge_method,
+        "code_challenge_method": (
+            code_challenge_method.value
+            if hasattr(code_challenge_method, "value")
+            else code_challenge_method
+        ),
         "nonce": nonce,
     }
 
@@ -402,14 +412,7 @@ def get_client_credentials(
 @router.post("/token")
 def token(
     request: Request,
-    grant_type: str = Form(...),
-    code: Optional[str] = Form(None),
-    client_id: Optional[str] = Form(None),
-    client_secret: Optional[str] = Form(None),
-    redirect_uri: Optional[str] = Form(None),
-    code_verifier: Optional[str] = Form(None),
-    refresh_token: Optional[str] = Form(None),
-    scope: Optional[str] = Form(None),
+    request_data: TokenRequest = Depends(TokenRequest.as_form),
     db: Session = Depends(get_db),
 ):
     """
@@ -426,7 +429,7 @@ def token(
     """
     # Extract credentials (header takes precedence)
     client_id, client_secret, used_basic = get_client_credentials(
-        request, client_id, client_secret
+        request, request_data.client_id, request_data.client_secret
     )
 
     if not client_id:
@@ -438,23 +441,23 @@ def token(
         )
 
     try:
-        if grant_type == "authorization_code":
+        if request_data.grant_type == GrantType.AUTHORIZATION_CODE:
             return handle_authorization_code_grant(
                 db=db,
-                code=code,
+                code=request_data.code,
                 client_id=client_id,
                 client_secret=client_secret,
-                redirect_uri=redirect_uri,
-                code_verifier=code_verifier,
-                scope=scope,
+                redirect_uri=request_data.redirect_uri,
+                code_verifier=request_data.code_verifier,
+                scope=request_data.scope,
             )
-        elif grant_type == "refresh_token":
+        elif request_data.grant_type == GrantType.REFRESH_TOKEN:
             return handle_refresh_token_grant(
                 db=db,
-                refresh_token=refresh_token,
+                refresh_token=request_data.refresh_token,
                 client_id=client_id,
                 client_secret=client_secret,
-                scope=scope,
+                scope=request_data.scope,
             )
     except OAuthError as e:
         if used_basic and e.error_code == OAuthErrorCode.INVALID_CLIENT:
@@ -465,17 +468,14 @@ def token(
 
     raise OAuthError(
         error_code=OAuthErrorCode.UNSUPPORTED_GRANT_TYPE,
-        description=f"Unsupported grant type: {grant_type}",
+        description=f"Unsupported grant type: {request_data.grant_type}",
     )
 
 
 @router.post("/revoke")
 def revoke(
     request: Request,
-    token: str = Form(...),
-    token_type_hint: Optional[str] = Form(None),
-    client_id: Optional[str] = Form(None),
-    client_secret: Optional[str] = Form(None),
+    request_data: RevocationRequest = Depends(RevocationRequest.as_form),
     db: Session = Depends(get_db),
 ):
     """
@@ -492,7 +492,7 @@ def revoke(
     """
     # Extract credentials (header takes precedence)
     client_id, client_secret, used_basic = get_client_credentials(
-        request, client_id, client_secret
+        request, request_data.client_id, request_data.client_secret
     )
 
     if not client_id or not client_secret:
@@ -515,7 +515,7 @@ def revoke(
         )
 
     # Attempt to revoke the token (access or refresh)
-    revoke_token(db, token, token_type_hint, client_id)
+    revoke_token(db, request_data.token, request_data.token_type_hint, client_id)
 
     # Per RFC 7009 Section 2.2, respond with HTTP 200 even if the token is invalid
     return {"success": True}

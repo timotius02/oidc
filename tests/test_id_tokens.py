@@ -73,7 +73,7 @@ class TestCreateIdToken:
 
     def test_id_token_contains_required_claims(self, mock_settings):
         """ID token must contain all required claims per OIDC Core §2."""
-        with patch("app.oauth.jwt.PRIVATE_KEY", "test_key"):
+        with patch("app.oauth.jwt.CURRENT_KEY.private_key", "test_key", create=True):
             with patch("app.oauth.jwt.jwt") as mock_jwt:
                 mock_jwt.encode.return_value = "mock_token"
 
@@ -98,7 +98,7 @@ class TestCreateIdToken:
 
     def test_id_token_with_nonce(self, mock_settings):
         """ID token should include nonce when provided."""
-        with patch("app.oauth.jwt.PRIVATE_KEY", "test_key"):
+        with patch("app.oauth.jwt.CURRENT_KEY.private_key", "test_key", create=True):
             with patch("app.oauth.jwt.jwt") as mock_jwt:
                 mock_jwt.encode.return_value = "mock_token"
 
@@ -114,7 +114,7 @@ class TestCreateIdToken:
 
     def test_id_token_without_nonce(self, mock_settings):
         """ID token should NOT include nonce when not provided."""
-        with patch("app.oauth.jwt.PRIVATE_KEY", "test_key"):
+        with patch("app.oauth.jwt.CURRENT_KEY.private_key", "test_key", create=True):
             with patch("app.oauth.jwt.jwt") as mock_jwt:
                 mock_jwt.encode.return_value = "mock_token"
 
@@ -128,7 +128,7 @@ class TestCreateIdToken:
 
     def test_id_token_with_at_hash(self, mock_settings):
         """ID token should include at_hash when access_token provided."""
-        with patch("app.oauth.jwt.PRIVATE_KEY", "test_key"):
+        with patch("app.oauth.jwt.CURRENT_KEY.private_key", "test_key", create=True):
             with patch("app.oauth.jwt.jwt") as mock_jwt:
                 mock_jwt.encode.return_value = "mock_token"
 
