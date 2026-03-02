@@ -31,6 +31,64 @@ def jwks():
     return {"keys": [key.to_jwk() for key in KEYS]}
 
 
+@app.get("/.well-known/openid-configuration")
+def openid_configuration():
+    """
+    OpenID Connect Discovery Document per OpenID Connect Discovery §3.
+
+    Returns metadata about the authorization server including
+    endpoint URLs, supported features, and capabilities.
+    """
+    issuer = settings.JWT_ISSUER
+
+    return {
+        "issuer": issuer,
+        "authorization_endpoint": f"{issuer}/oauth/authorize",
+        "token_endpoint": f"{issuer}/oauth/token",
+        "userinfo_endpoint": f"{issuer}/oauth/userinfo",
+        "jwks_uri": f"{issuer}/.well-known/jwks.json",
+        "revocation_endpoint": f"{issuer}/oauth/revoke",
+        "grant_types_supported": [
+            "authorization_code",
+            "refresh_token",
+        ],
+        "response_types_supported": ["code"],
+        "response_modes_supported": ["query"],
+        "token_endpoint_auth_methods_supported": [
+            "client_secret_basic",
+            "client_secret_post",
+        ],
+        "revocation_endpoint_auth_methods_supported": [
+            "client_secret_basic",
+            "client_secret_post",
+        ],
+        "subject_types_supported": ["public"],
+        "id_token_signing_alg_values_supported": ["RS256"],
+        "scopes_supported": [
+            "openid",
+            "profile",
+            "email",
+            "offline_access",
+        ],
+        "claim_types_supported": ["normal"],
+        "claims_supported": [
+            "sub",
+            "iss",
+            "aud",
+            "exp",
+            "iat",
+            "name",
+            "family_name",
+            "given_name",
+            "email",
+            "email_verified",
+        ],
+        "code_challenge_methods_supported": ["S256"],
+        "service_documentation": None,
+        "ui_locales_supported": ["en"],
+    }
+
+
 @app.get("/")
 def root():
     return {"status": "ok"}
