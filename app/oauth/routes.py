@@ -495,7 +495,7 @@ def revoke(
         request, client_id, client_secret
     )
 
-    if not client_id:
+    if not client_id or not client_secret:
         raise OAuthError(
             error_code=OAuthErrorCode.INVALID_CLIENT,
             description="Invalid client credentials",

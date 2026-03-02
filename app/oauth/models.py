@@ -1,8 +1,10 @@
 import uuid
 from datetime import datetime
+from typing import Optional
 
-from sqlalchemy import Column, DateTime, String, Text
+from sqlalchemy import DateTime, String, Text
 from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
 
@@ -10,54 +12,77 @@ from app.db import Base
 class OAuthClient(Base):
     __tablename__ = "oauth_clients"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    client_id = Column(String, unique=True, nullable=False)
-    client_secret = Column(String, nullable=False)
-    redirect_uri = Column(Text, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
 
-    name = Column(String, nullable=False)
-    logo_uri = Column(Text, nullable=True)
-    scopes = Column(Text, nullable=False)
+    client_id: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    client_secret: Mapped[str] = mapped_column(String, nullable=False)
+    redirect_uri: Mapped[str] = mapped_column(Text, nullable=False)
 
-    client_type = Column(String, nullable=False, default="confidential")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    name: Mapped[str] = mapped_column(String, nullable=False)
+    logo_uri: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    scopes: Mapped[str] = mapped_column(Text, nullable=False)
+
+    client_type: Mapped[str] = mapped_column(
+        String, nullable=False, default="confidential"
+    )
 
 
 class AuthorizationCode(Base):
     __tablename__ = "authorization_codes"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    code = Column(String, unique=True, nullable=False)
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
 
-    user_id = Column(UUID(as_uuid=True), nullable=False)
+    code: Mapped[str] = mapped_column(String, unique=True, nullable=False)
 
-    redirect_uri = Column(Text, nullable=False)
-    scope = Column(Text, nullable=False)
-    nonce = Column(Text, nullable=True)  # For OIDC id_token
-    client_id = Column(String, nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
 
-    expires_at = Column(DateTime, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    redirect_uri: Mapped[str] = mapped_column(Text, nullable=False)
+    scope: Mapped[str] = mapped_column(Text, nullable=False)
+    nonce: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    code_challenge = Column(String, nullable=True)  # For PKCE
-    code_challenge_method = Column(String, nullable=True)  # For PKCE
+    client_id: Mapped[str] = mapped_column(String, nullable=False)
+
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    code_challenge: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    code_challenge_method: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
 
 class RefreshToken(Base):
     __tablename__ = "refresh_tokens"
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    token = Column(String, unique=True, nullable=False)
-    user_id = Column(UUID(as_uuid=True), nullable=False)
-    client_id = Column(String, nullable=False)
-    scope = Column(Text, nullable=False)
-    expires_at = Column(DateTime, nullable=False)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
 
-    revoked_at = Column(DateTime, nullable=True)
-    revoked_reason = Column(Text, nullable=True)
-    is_active = Column(
+    token: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False)
+    client_id: Mapped[str] = mapped_column(String, nullable=False)
+    scope: Mapped[str] = mapped_column(Text, nullable=False)
+
+    expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
+
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    revoked_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+
+    is_active: Mapped[str] = mapped_column(
         String, nullable=False, default="true"
     )  # "true", "revoked", "replaced"
-    parent_token_id = Column(UUID(as_uuid=True), nullable=True)
-    replaced_by_token_id = Column(UUID(as_uuid=True), nullable=True)
+
+    parent_token_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
+
+    replaced_by_token_id: Mapped[Optional[uuid.UUID]] = mapped_column(
+        UUID(as_uuid=True), nullable=True
+    )
