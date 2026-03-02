@@ -1,6 +1,6 @@
 import secrets
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Dict, List, Optional
 
 from sqlalchemy.orm import Session
@@ -132,7 +132,8 @@ def create_authorization_code(
         nonce=nonce,
         code_challenge=code_challenge,
         code_challenge_method=code_challenge_method,
-        expires_at=datetime.utcnow() + timedelta(seconds=settings.CODE_EXPIRY_SECONDS),
+        expires_at=datetime.now(UTC).replace(tzinfo=None)
+        + timedelta(seconds=settings.CODE_EXPIRY_SECONDS),
     )
 
     db.add(auth_code)
@@ -169,7 +170,7 @@ def create_refresh_token(
         user_id=user_id,
         client_id=client_id,
         scope=scope,
-        expires_at=datetime.utcnow()
+        expires_at=datetime.now(UTC).replace(tzinfo=None)
         + timedelta(seconds=settings.REFRESH_TOKEN_EXPIRE_SECONDS),
         parent_token_id=parent_token_id,
     )
@@ -246,7 +247,7 @@ def exchange_code_for_tokens(
             description="The authorization code is invalid or has been used",
         )
 
-    if auth_code.expires_at < datetime.utcnow():
+    if auth_code.expires_at < datetime.now(UTC).replace(tzinfo=None):
         raise OAuthError(
             error_code=OAuthErrorCode.INVALID_GRANT,
             description="The authorization code has expired",

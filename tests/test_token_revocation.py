@@ -9,7 +9,7 @@ Tests cover:
 """
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
@@ -86,7 +86,7 @@ class TestRevokeTokenEndpoint:
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
             is_active="true",
             parent_token_id=None,
             replaced_by_token_id=None,
@@ -118,7 +118,7 @@ class TestRevokeTokenEndpoint:
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
             is_active="true",
             parent_token_id=None,
             replaced_by_token_id=None,
@@ -130,7 +130,7 @@ class TestRevokeTokenEndpoint:
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
             is_active="true",
             parent_token_id=parent_id,
             replaced_by_token_id=None,
@@ -165,7 +165,7 @@ class TestRevokeTokenEndpoint:
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
             is_active="true",
             parent_token_id=None,
             replaced_by_token_id=None,
@@ -207,7 +207,7 @@ class TestRevokeTokenEndpoint:
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
             is_active="true",
             parent_token_id=None,
             replaced_by_token_id=None,
@@ -261,7 +261,7 @@ class TestRevokeTokenChainIntegration:
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
             is_active="replaced",
             parent_token_id=None,
             replaced_by_token_id=None,
@@ -273,7 +273,7 @@ class TestRevokeTokenChainIntegration:
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
             is_active="true",
             parent_token_id=str(old_token.id),
             replaced_by_token_id=None,
@@ -309,7 +309,7 @@ class TestRevokeTokenChainIntegration:
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
             is_active="true",
             parent_token_id=None,
             replaced_by_token_id=None,
@@ -321,7 +321,7 @@ class TestRevokeTokenChainIntegration:
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
             is_active="true",
             parent_token_id=str(token1.id),
             replaced_by_token_id=None,
@@ -333,7 +333,7 @@ class TestRevokeTokenChainIntegration:
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
             is_active="true",
             parent_token_id=str(token2.id),
             replaced_by_token_id=None,

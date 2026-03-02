@@ -1,7 +1,7 @@
 import base64
 import hashlib
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 
 from cryptography.hazmat.primitives import serialization
 from jose import jwt
@@ -79,7 +79,7 @@ def create_access_token(subject: str, audience: str, scope: str) -> tuple[str, s
     Returns:
         Tuple of (access_token, jti)
     """
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
     jti = str(uuid.uuid4())
 
     payload = {
@@ -156,7 +156,7 @@ def create_id_token(
     Optional claims:
     - nonce: Value to bind ID token to authentication request
     """
-    now = datetime.utcnow()
+    now = datetime.now(UTC)
 
     payload = {
         "iss": settings.JWT_ISSUER,
@@ -196,7 +196,7 @@ def revoke_token_chain(
     """
     # Revoke current token
     refresh_token.is_active = "revoked"
-    refresh_token.revoked_at = datetime.utcnow()
+    refresh_token.revoked_at = datetime.now(UTC).replace(tzinfo=None)
     refresh_token.revoked_reason = reason
 
     # Revoke all tokens in the chain (both parents and children)
@@ -210,7 +210,7 @@ def revoke_token_chain(
         )
         if parent and parent.is_active == "true":
             parent.is_active = "revoked"
-            parent.revoked_at = datetime.utcnow()
+            parent.revoked_at = datetime.now(UTC)
             parent.revoked_reason = f"chain_revocation: {reason}"
         current = parent
 
@@ -224,7 +224,7 @@ def revoke_token_chain(
         )
         if child and child.is_active == "true":
             child.is_active = "revoked"
-            child.revoked_at = datetime.utcnow()
+            child.revoked_at = datetime.now(UTC)
             child.revoked_reason = f"chain_revocation: {reason}"
         current = child
 
@@ -309,7 +309,7 @@ def validate_refresh_token(
         )
 
     # Check expiration
-    if refresh_token.expires_at < datetime.utcnow():
+    if refresh_token.expires_at < datetime.now(UTC).replace(tzinfo=None):
         raise OAuthError(
             error_code=OAuthErrorCode.INVALID_GRANT,
             description="Refresh token has expired",

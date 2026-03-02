@@ -3,7 +3,7 @@ Tests for OAuth 2.0 Token Response Headers per RFC 6749.
 """
 
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -53,7 +53,7 @@ def test_authorization_code_grant_headers(mock_db):
         redirect_uri="http://localhost/callback",
         user_id=str(uuid.uuid4()),
         scope="openid profile",
-        expires_at=datetime.utcnow() + timedelta(minutes=10),
+        expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(minutes=10),
     )
 
     mock_query = MagicMock()
@@ -99,7 +99,7 @@ def test_refresh_token_grant_headers(mock_db):
         token="old_refresh_token",
         client_id="test_client",
         user_id=str(uuid.uuid4()),
-        expires_at=datetime.utcnow() + timedelta(days=7),
+        expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
         is_active="true",
         scope="openid profile",
     )

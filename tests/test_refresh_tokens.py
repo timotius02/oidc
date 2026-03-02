@@ -12,7 +12,7 @@ Tests cover:
 
 import json
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -83,8 +83,8 @@ def valid_refresh_token_record(sample_user_id, sample_client_id, sample_scope):
         user_id=sample_user_id,
         client_id=sample_client_id,
         scope=sample_scope,
-        expires_at=datetime.utcnow() + timedelta(days=7),
-        created_at=datetime.utcnow(),
+        expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
+        created_at=datetime.now(UTC).replace(tzinfo=None),
         is_active="true",
         parent_token_id=None,
         replaced_by_token_id=None,
@@ -100,8 +100,8 @@ def expired_refresh_token_record(sample_user_id, sample_client_id, sample_scope)
         user_id=sample_user_id,
         client_id=sample_client_id,
         scope=sample_scope,
-        expires_at=datetime.utcnow() - timedelta(days=1),
-        created_at=datetime.utcnow() - timedelta(days=8),
+        expires_at=datetime.now(UTC).replace(tzinfo=None) - timedelta(days=1),
+        created_at=datetime.now(UTC).replace(tzinfo=None) - timedelta(days=8),
         is_active="true",
         parent_token_id=None,
         replaced_by_token_id=None,
@@ -117,10 +117,10 @@ def revoked_refresh_token_record(sample_user_id, sample_client_id, sample_scope)
         user_id=sample_user_id,
         client_id=sample_client_id,
         scope=sample_scope,
-        expires_at=datetime.utcnow() + timedelta(days=7),
-        created_at=datetime.utcnow(),
+        expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
+        created_at=datetime.now(UTC).replace(tzinfo=None),
         is_active="revoked",
-        revoked_at=datetime.utcnow(),
+        revoked_at=datetime.now(UTC).replace(tzinfo=None),
         revoked_reason="user_revoked",
         parent_token_id=None,
         replaced_by_token_id=None,
@@ -184,7 +184,7 @@ class TestRefreshTokenCreation:
         assert added_token.user_id == sample_user_id
         assert added_token.client_id == sample_client_id
         assert added_token.scope == sample_scope
-        assert added_token.expires_at > datetime.utcnow()
+        assert added_token.expires_at > datetime.now(UTC).replace(tzinfo=None)
 
     def test_parent_token_id_stored_for_rotation_chains(
         self, mock_db, sample_user_id, sample_client_id, sample_scope
@@ -231,7 +231,7 @@ class TestRefreshTokenCreation:
         added_token = mock_db.add.call_args[0][0]
 
         # Verify expiry time
-        expected_expiry = datetime.utcnow() + timedelta(
+        expected_expiry = datetime.now(UTC).replace(tzinfo=None) + timedelta(
             seconds=settings.REFRESH_TOKEN_EXPIRE_SECONDS
         )
         # Allow 1 second tolerance for test execution time
@@ -355,7 +355,7 @@ class TestRefreshTokenValidation:
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
             is_active="true",
             parent_token_id=None,
             replaced_by_token_id=None,
@@ -369,7 +369,7 @@ class TestRefreshTokenValidation:
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
             is_active="replaced",
             parent_token_id=parent_id,
             replaced_by_token_id=None,
@@ -419,8 +419,8 @@ class TestRefreshTokenRotation:
             user_id=valid_refresh_token_record.user_id,
             client_id=valid_refresh_token_record.client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
-            created_at=datetime.utcnow(),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
+            created_at=datetime.now(UTC).replace(tzinfo=None),
             is_active="true",
             parent_token_id=str(valid_refresh_token_record.id),
         )
@@ -452,8 +452,8 @@ class TestRefreshTokenRotation:
             user_id=valid_refresh_token_record.user_id,
             client_id=valid_refresh_token_record.client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
-            created_at=datetime.utcnow(),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
+            created_at=datetime.now(UTC).replace(tzinfo=None),
             is_active="true",
             parent_token_id=str(valid_refresh_token_record.id),
         )
@@ -486,8 +486,8 @@ class TestRefreshTokenRotation:
             user_id=valid_refresh_token_record.user_id,
             client_id=valid_refresh_token_record.client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
-            created_at=datetime.utcnow(),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
+            created_at=datetime.now(UTC).replace(tzinfo=None),
             is_active="true",
             parent_token_id=str(valid_refresh_token_record.id),
         )
@@ -521,8 +521,8 @@ class TestRefreshTokenRotation:
             user_id=valid_refresh_token_record.user_id,
             client_id=valid_refresh_token_record.client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
-            created_at=datetime.utcnow(),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
+            created_at=datetime.now(UTC).replace(tzinfo=None),
             is_active="true",
             parent_token_id=str(valid_refresh_token_record.id),
         )
@@ -564,8 +564,8 @@ class TestReplayAttackDetection:
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
-            created_at=datetime.utcnow(),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
+            created_at=datetime.now(UTC).replace(tzinfo=None),
             is_active="replaced",
             parent_token_id=None,
             replaced_by_token_id=new_token_id,
@@ -578,7 +578,7 @@ class TestReplayAttackDetection:
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
             is_active="true",
             parent_token_id=str(replaced_token.id),
             replaced_by_token_id=None,
@@ -640,9 +640,9 @@ class TestReplayAttackDetection:
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
             is_active="revoked",
-            revoked_at=datetime.utcnow(),
+            revoked_at=datetime.now(UTC).replace(tzinfo=None),
             revoked_reason="user_request",
             parent_token_id=None,
             replaced_by_token_id=None,
@@ -681,7 +681,7 @@ class TestTokenChainRevocation:
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
             is_active="true",
             parent_token_id=None,
             replaced_by_token_id=None,
@@ -708,14 +708,14 @@ class TestTokenChainRevocation:
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
             is_active="true",
             parent_token_id=None,
             replaced_by_token_id=None,
         )
         mock_db.commit = MagicMock()
 
-        before_revoke = datetime.utcnow()
+        before_revoke = datetime.now(UTC).replace(tzinfo=None)
 
         revoke_token_chain(
             db=mock_db,
@@ -738,7 +738,7 @@ class TestTokenChainRevocation:
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
             is_active="true",
             parent_token_id=None,
             replaced_by_token_id=None,
@@ -750,7 +750,7 @@ class TestTokenChainRevocation:
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
             is_active="true",
             parent_token_id=parent_id,
             replaced_by_token_id=None,
@@ -782,7 +782,7 @@ class TestTokenChainRevocation:
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
             is_active="true",
             parent_token_id=None,
             replaced_by_token_id=None,
@@ -794,7 +794,7 @@ class TestTokenChainRevocation:
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
             is_active="true",
             parent_token_id=None,
             replaced_by_token_id=child_id,
@@ -826,7 +826,7 @@ class TestTokenChainRevocation:
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
             is_active="true",
             parent_token_id=None,
             replaced_by_token_id=None,
@@ -840,7 +840,7 @@ class TestTokenChainRevocation:
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
             is_active="true",
             parent_token_id=parent_id,
             replaced_by_token_id=child_id,
@@ -852,7 +852,7 @@ class TestTokenChainRevocation:
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
             is_active="true",
             parent_token_id=middle_id,
             replaced_by_token_id=None,
@@ -888,9 +888,9 @@ class TestTokenChainRevocation:
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
             is_active="revoked",
-            revoked_at=datetime.utcnow() - timedelta(hours=1),
+            revoked_at=datetime.now(UTC).replace(tzinfo=None) - timedelta(hours=1),
             revoked_reason="previous_revocation",
             parent_token_id=None,
             replaced_by_token_id=None,
@@ -902,7 +902,7 @@ class TestTokenChainRevocation:
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
             is_active="true",
             parent_token_id=parent_id,
             replaced_by_token_id=None,
@@ -934,7 +934,7 @@ class TestTokenChainRevocation:
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
             is_active="true",
             parent_token_id=parent_id,
             replaced_by_token_id=None,
@@ -967,7 +967,7 @@ class TestTokenChainRevocation:
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
-            expires_at=datetime.utcnow() + timedelta(days=7),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(days=7),
             is_active="true",
             parent_token_id=None,
             replaced_by_token_id=child_id,

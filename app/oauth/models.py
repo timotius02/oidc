@@ -1,5 +1,5 @@
 import uuid
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Optional
 
 from sqlalchemy import DateTime, String, Text
@@ -7,6 +7,10 @@ from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import Mapped, mapped_column
 
 from app.db import Base
+
+
+def utc_now() -> datetime:
+    return datetime.now(UTC).replace(tzinfo=None)
 
 
 class OAuthClient(Base):
@@ -20,7 +24,7 @@ class OAuthClient(Base):
     client_secret: Mapped[str] = mapped_column(String, nullable=False)
     redirect_uri: Mapped[str] = mapped_column(Text, nullable=False)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     name: Mapped[str] = mapped_column(String, nullable=False)
     logo_uri: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
@@ -50,7 +54,7 @@ class AuthorizationCode(Base):
 
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     code_challenge: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     code_challenge_method: Mapped[Optional[str]] = mapped_column(String, nullable=True)
@@ -70,7 +74,7 @@ class RefreshToken(Base):
 
     expires_at: Mapped[datetime] = mapped_column(DateTime, nullable=False)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=utc_now)
 
     revoked_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
     revoked_reason: Mapped[Optional[str]] = mapped_column(Text, nullable=True)

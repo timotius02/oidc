@@ -4,7 +4,7 @@ Tests for OIDC ID Token functionality per OpenID Connect Core §2.
 
 import hashlib
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -202,7 +202,7 @@ class TestIdTokenIntegration:
             redirect_uri="http://localhost",
             scope="openid profile",
             nonce="test_nonce",
-            expires_at=datetime.utcnow() + timedelta(minutes=10),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(minutes=10),
         )
         db_session.add(auth_code)
         db_session.commit()
@@ -259,7 +259,7 @@ class TestIdTokenIntegration:
             client_id=client_id,
             redirect_uri="http://localhost",
             scope="profile",
-            expires_at=datetime.utcnow() + timedelta(minutes=10),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(minutes=10),
         )
         db_session.add(auth_code)
         db_session.commit()
@@ -302,7 +302,7 @@ class TestIdTokenIntegration:
             client_id=client_id,
             redirect_uri="http://localhost",
             scope="openid",
-            expires_at=datetime.utcnow() + timedelta(minutes=10),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(minutes=10),
         )
         db_session.add(auth_code)
         db_session.commit()

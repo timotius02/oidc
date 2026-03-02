@@ -4,7 +4,7 @@ Tests for OAuth 2.0 Authorization Code Grant flow per RFC 6749.
 
 import base64
 import uuid
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -49,7 +49,7 @@ def test_auth_code_grant_without_redirect_uri_succeeds_if_missing_in_auth_reques
         redirect_uri=None,
         user_id=str(uuid.uuid4()),
         scope="openid",
-        expires_at=datetime.utcnow() + timedelta(minutes=10),
+        expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(minutes=10),
     )
 
     mock_query = MagicMock()
@@ -92,7 +92,7 @@ def test_auth_code_grant_fails_without_redirect_uri_if_present_in_auth_request(m
         client_id="test_client",
         redirect_uri="http://localhost/callback",
         user_id=str(uuid.uuid4()),
-        expires_at=datetime.utcnow() + timedelta(minutes=10),
+        expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(minutes=10),
     )
 
     mock_query = MagicMock()
@@ -176,7 +176,7 @@ class TestAuthCodeGrantIntegration:
             client_id=client_id,
             redirect_uri="http://localhost",
             scope=granted_scope,
-            expires_at=datetime.utcnow() + timedelta(minutes=10),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(minutes=10),
         )
         db_session.add(auth_code)
         db_session.commit()
@@ -218,7 +218,7 @@ class TestAuthCodeGrantIntegration:
             client_id=client_id,
             redirect_uri="http://localhost",
             scope="openid",
-            expires_at=datetime.utcnow() + timedelta(minutes=10),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(minutes=10),
         )
         db_session.add(auth_code)
         db_session.commit()
@@ -257,7 +257,7 @@ class TestAuthCodeGrantIntegration:
             client_id=client_id,
             redirect_uri="http://localhost",
             scope="openid",
-            expires_at=datetime.utcnow() + timedelta(minutes=10),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(minutes=10),
         )
         db_session.add(auth_code)
         db_session.commit()

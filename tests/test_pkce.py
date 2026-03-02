@@ -10,7 +10,7 @@ Tests cover:
 import base64
 import hashlib
 import secrets
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock
 
 import pytest
@@ -211,7 +211,7 @@ class TestPKCEValidation:
             code="test_code",
             client_id="test_client",
             code_challenge="challenge",
-            expires_at=datetime.utcnow() + timedelta(minutes=10),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(minutes=10),
             redirect_uri="http://localhost",
         )
 
@@ -238,7 +238,7 @@ class TestPKCEValidation:
             code="test_code",
             client_id="test_client",
             code_challenge="challenge",
-            expires_at=datetime.utcnow() + timedelta(minutes=10),
+            expires_at=datetime.now(UTC).replace(tzinfo=None) + timedelta(minutes=10),
             redirect_uri="http://localhost",
         )
 
