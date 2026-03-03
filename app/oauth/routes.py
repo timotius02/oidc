@@ -1,6 +1,4 @@
-import secrets
-
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -27,24 +25,10 @@ from app.oauth.services.token import (
 )
 from app.oauth.services.userinfo import get_userinfo_claims
 from app.oauth.utils import get_current_user
+from app.security.csrf import generate_csrf_token, verify_csrf
 from app.templates_config import templates
 
 router = APIRouter(prefix="/oauth", tags=["oauth"])
-
-
-def generate_csrf_token(request: Request) -> str:
-    """Generate a CSRF token and store it in the session."""
-    token = secrets.token_urlsafe(32)
-    request.session["csrf_token"] = token
-    return token
-
-
-def validate_csrf_token(request: Request, submitted_token: str) -> bool:
-    """Validate the submitted CSRF token against the session token."""
-    session_token = request.session.get("csrf_token")
-    if not session_token:
-        return False
-    return secrets.compare_digest(session_token, submitted_token)
 
 
 def render_consent_html(
@@ -177,10 +161,9 @@ def consent_page(
     )
 
 
-@router.post("/consent/approve")
+@router.post("/consent/approve", dependencies=[Depends(verify_csrf)])
 def approve_consent(
     request: Request,
-    csrf_token: str = Form(...),
     db: Session = Depends(get_db),
 ):
     """
@@ -222,18 +205,14 @@ def approve_consent(
     return RedirectResponse(redirect_url)
 
 
-@router.post("/consent/deny")
+@router.post("/consent/deny", dependencies=[Depends(verify_csrf)])
 def deny_consent(
     request: Request,
-    csrf_token: str = Form(...),
 ):
     """
     Handle user denial of authorization request.
     Returns an access_denied error redirect to the client.
     """
-    # Validate CSRF token
-    if not validate_csrf_token(request, csrf_token):
-        raise HTTPException(403, "Invalid CSRF token")
 
     params = request.session.get("authorize_params")
 
