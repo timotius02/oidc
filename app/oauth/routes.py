@@ -1,30 +1,30 @@
-import base64
 import secrets
-from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.oauth.client_auth import get_authenticated_client
 from app.oauth.constants import GrantType
 from app.oauth.errors import (
     OAuthError,
     OAuthErrorCode,
     create_authorization_error_response,
 )
+from app.oauth.models import OAuthClient
 from app.oauth.schemas import AuthorizationRequest, RevocationRequest, TokenRequest
 from app.oauth.service import (
     create_authorization_code,
-    get_client_by_id,
-    get_scope_descriptions,
     get_userinfo_claims,
+    get_validated_client,
     handle_authorization_code_grant,
     handle_refresh_token_grant,
+    prepare_consent_view_data,
     revoke_token,
+    validate_authorization_request,
 )
 from app.oauth.utils import get_current_user
-from app.services.auth import verify_password
 from app.templates_config import templates
 
 router = APIRouter(prefix="/oauth", tags=["oauth"])
@@ -86,188 +86,63 @@ def authorize(
 ):
     """
     OAuth 2.0 Authorization Endpoint.
-
-    Validates the client and authorization parameters, then either:
-    - Redirects to login if user is not authenticated
-    - Redirects to consent screen if user is authenticated
-
-    Parameters can be provided via query string or retrieved from session
-    (stored during a previous request that triggered login redirect).
     """
-    client_id = params.client_id
-    redirect_uri = params.redirect_uri
-    response_type = params.response_type
-    scope = params.scope
-    state = params.state
-    code_challenge = params.code_challenge
-    code_challenge_method = params.code_challenge_method
-    nonce = params.nonce
+    # 1. Restore/Merge params from session if missing (for post-login redirect)
+    stored = request.session.get("authorize_params") or {}
+    client_id = params.client_id or stored.get("client_id")
+    redirect_uri = params.redirect_uri or stored.get("redirect_uri")
 
-    # If query params are missing, try to restore from session
-    # This handles the post-login redirect case
-    if client_id is None or redirect_uri is None or response_type is None:
-        stored_params = request.session.get("authorize_params")
-        if stored_params:
-            # Use stored params for missing values
-            client_id = client_id or stored_params.get("client_id")
-            redirect_uri = redirect_uri or stored_params.get("redirect_uri")
-            response_type = response_type or stored_params.get("response_type")
-            scope = scope or stored_params.get("scope")
-            state = state or stored_params.get("state")
-            code_challenge = code_challenge or stored_params.get("code_challenge")
-            code_challenge_method = code_challenge_method or stored_params.get(
-                "code_challenge_method"
-            )
-            nonce = nonce or stored_params.get("nonce")
-
-    # =========================================================================
-    # STEP 1: Validate client_id (REQUIRED per RFC 6749 Section 4.1.1)
-    # =========================================================================
-    # Per RFC 6749 Section 4.1.2.1:
-    # "If the request fails due to a missing, invalid, or mismatching
-    # redirection URI, or if the client identifier is missing or invalid,
-    # the authorization server SHOULD inform the resource owner of the
-    # error and MUST NOT automatically redirect the user-agent to the
-    # invalid redirection URI."
-    if not client_id:
+    # 2. Hard Validation (Errors here show an error page, no redirect)
+    try:
+        client = get_validated_client(db, client_id, redirect_uri)
+    except ValueError as e:
         return templates.TemplateResponse(
             "error.html",
             {
                 "request": request,
                 "error_title": "Invalid Request",
-                "error_message": "Missing required parameter: client_id",
+                "error_message": str(e),
             },
             status_code=400,
         )
 
-    # =========================================================================
-    # STEP 2: Validate client exists
-    # =========================================================================
-    # This must be done BEFORE using redirect_uri for any error redirects
-    # to prevent open redirect attacks
-    client = get_client_by_id(db, client_id)
-
-    if not client:
-        # Unknown client - show error page, don't redirect
-        return templates.TemplateResponse(
-            "error.html",
-            {
-                "request": request,
-                "error_title": "Invalid Client",
-                "error_message": "The client could not be identified.",
-            },
-            status_code=400,
+    # 3. OAuth Validation (Errors here result in a redirect back to client)
+    # Use stored values if current ones are missing
+    resolved_redirect_uri = redirect_uri or client.redirect_uri
+    try:
+        effective_scope = validate_authorization_request(
+            client=client,
+            response_type=params.response_type or stored.get("response_type"),
+            scope=params.scope or stored.get("scope"),
+            code_challenge=params.code_challenge or stored.get("code_challenge"),
+            code_challenge_method=params.code_challenge_method
+            or stored.get("code_challenge_method"),
         )
-
-    # =========================================================================
-    # STEP 3: Validate redirect_uri
-    # =========================================================================
-    # Per RFC 6749 Section 4.1.1, redirect_uri is OPTIONAL if the client
-    # has pre-registered a redirect URI. If not provided, use the registered one.
-    if redirect_uri is None:
-        redirect_uri = client.redirect_uri
-
-    # Validate redirect_uri matches registered URI
-    if redirect_uri != client.redirect_uri:
-        # Invalid redirect_uri - show error page, don't redirect
-        # This prevents open redirect attacks
-        return templates.TemplateResponse(
-            "error.html",
-            {
-                "request": request,
-                "error_title": "Invalid Redirect URI",
-                "error_message": ("Redirect URI does not match the registered URI."),
-            },
-            status_code=400,
-        )
-
-    # =========================================================================
-    # STEP 4: Validate response_type (REQUIRED per RFC 6749 Section 4.1.1)
-    # =========================================================================
-    if not response_type:
+    except OAuthError as e:
         return create_authorization_error_response(
-            redirect_uri=redirect_uri,
-            error_code=OAuthErrorCode.INVALID_REQUEST,
-            description="Missing required parameter: response_type",
-            state=state,
+            redirect_uri=resolved_redirect_uri,
+            error_code=e.error_code,
+            description=e.description,
+            state=params.state or stored.get("state"),
         )
 
-    if response_type != "code":
-        return create_authorization_error_response(
-            redirect_uri=redirect_uri,
-            error_code=OAuthErrorCode.UNSUPPORTED_RESPONSE_TYPE,
-            description="The authorization server only supports 'code' response type",
-            state=state,
-        )
-
-    # =========================================================================
-    # STEP 5: Validate PKCE parameters
-    # =========================================================================
-    # Per RFC 7636 Section 4.2:
-    # - code_challenge is REQUIRED when PKCE is mandated by the server
-    # - code_challenge_method is OPTIONAL, defaults to "plain" if absent
-    #
-    # This server enforces S256 only for security (modern best practice).
-    # Clients MUST explicitly provide code_challenge_method=S256.
-    if not code_challenge:
-        return create_authorization_error_response(
-            redirect_uri=redirect_uri,
-            error_code=OAuthErrorCode.INVALID_REQUEST,
-            description="Missing required parameter: code_challenge (PKCE is required)",
-            state=state,
-        )
-
-    if code_challenge_method != "S256":
-        return create_authorization_error_response(
-            redirect_uri=redirect_uri,
-            error_code=OAuthErrorCode.INVALID_REQUEST,
-            description="Missing/invalid code_challenge_method. Only 'S256' supported.",
-            state=state,
-        )
-
-    # =========================================================================
-    # STEP 6: Validate scope (OPTIONAL per RFC 6749 Section 4.1.1)
-    # =========================================================================
-    # If scope is not provided, use the client's default scopes
-    if not scope:
-        scope = client.scopes
-
-    # Validate requested scopes are subset of allowed scopes
-    allowed_scopes = set(client.scopes.split())
-    requested = set(scope.split())
-
-    if not requested.issubset(allowed_scopes):
-        invalid_scopes = requested - allowed_scopes
-        return create_authorization_error_response(
-            redirect_uri=redirect_uri,
-            error_code=OAuthErrorCode.INVALID_SCOPE,
-            description=f"Requested scopes not allowed: {' '.join(invalid_scopes)}",
-            state=state,
-        )
-
-    # Store validated params in session for consent flow and post-login redirect
+    # 4. Persistence
     request.session["authorize_params"] = {
-        "client_id": client_id,
-        "redirect_uri": redirect_uri,
-        "response_type": (
-            response_type.value if hasattr(response_type, "value") else response_type
-        ),
-        "scope": scope,
-        "state": state,
-        "code_challenge": code_challenge,
-        "code_challenge_method": (
-            code_challenge_method.value
-            if hasattr(code_challenge_method, "value")
-            else code_challenge_method
-        ),
-        "nonce": nonce,
+        "client_id": client.client_id,
+        "redirect_uri": resolved_redirect_uri,
+        "response_type": params.response_type or stored.get("response_type"),
+        "scope": effective_scope,
+        "state": params.state or stored.get("state"),
+        "code_challenge": params.code_challenge or stored.get("code_challenge"),
+        "code_challenge_method": params.code_challenge_method
+        or stored.get("code_challenge_method"),
+        "nonce": params.nonce or stored.get("nonce"),
     }
 
-    # Check user authentication
+    # 5. Auth Check
     user = get_current_user(request, db)
     if not user:
-        login_url = "/auth/login?next=/oauth/authorize"
-        return RedirectResponse(login_url)
+        return RedirectResponse("/auth/login?next=/oauth/authorize")
 
     return RedirectResponse("/oauth/consent")
 
@@ -281,7 +156,6 @@ def consent_page(
     Display the consent screen for the user to approve or deny authorization.
     """
     params = request.session.get("authorize_params")
-
     if not params:
         raise HTTPException(400, "Missing authorization request")
 
@@ -289,20 +163,16 @@ def consent_page(
     if not user:
         return RedirectResponse("/auth/login")
 
-    # Get client info for display
-    client = get_client_by_id(db, params["client_id"])
+    try:
+        client, scope_descriptions = prepare_consent_view_data(
+            db, params["client_id"], params["scope"]
+        )
+    except ValueError as e:
+        raise HTTPException(400, str(e))
 
-    if not client:
-        raise HTTPException(400, "Invalid client")
-
-    # Parse scopes for display
-    scopes = params["scope"].split()
-    scope_descriptions = get_scope_descriptions(scopes)
-
-    # Generate CSRF token for form protection
-    csrf_token = generate_csrf_token(request)
-
-    return render_consent_html(request, user, client, scope_descriptions, csrf_token)
+    return render_consent_html(
+        request, user, client, scope_descriptions, generate_csrf_token(request)
+    )
 
 
 @router.post("/consent/approve")
@@ -380,35 +250,11 @@ def deny_consent(
     )
 
 
-def get_client_credentials(
-    request: Request,
-    client_id: Optional[str] = None,
-    client_secret: Optional[str] = None,
-) -> tuple[Optional[str], Optional[str], bool]:
-    """
-    Extract client credentials from Authorization header or form parameters.
-    Per RFC 6749 Section 2.3.1.
-
-    Returns:
-        Tuple of (client_id, client_secret, used_basic_auth)
-    """
-    auth_header = request.headers.get("Authorization")
-    if auth_header and auth_header.lower().startswith("basic "):
-        try:
-            auth_decoded = base64.b64decode(auth_header[6:]).decode("utf-8")
-            if ":" in auth_decoded:
-                cid, csec = auth_decoded.split(":", 1)
-                return cid, csec, True
-        except Exception:
-            pass
-
-    return client_id, client_secret, False
-
-
 @router.post("/token")
 def token(
     request: Request,
     request_data: TokenRequest = Depends(TokenRequest.as_form),
+    client: OAuthClient = Depends(get_authenticated_client),
     db: Session = Depends(get_db),
 ):
     """
@@ -423,44 +269,22 @@ def token(
     - refresh_token grant (RFC 6749 §6)
 
     """
-    # Extract credentials (header takes precedence)
-    client_id, client_secret, used_basic = get_client_credentials(
-        request, request_data.client_id, request_data.client_secret
-    )
-
-    if not client_id:
-        raise OAuthError(
-            error_code=OAuthErrorCode.INVALID_CLIENT,
-            description="Client authentication failed (missing client_id)",
-            status_code=401,
-            headers={"WWW-Authenticate": 'Basic realm="oauth"'} if used_basic else None,
+    if request_data.grant_type == GrantType.AUTHORIZATION_CODE:
+        return handle_authorization_code_grant(
+            db=db,
+            code=request_data.code,
+            client=client,
+            redirect_uri=request_data.redirect_uri,
+            code_verifier=request_data.code_verifier,
+            scope=request_data.scope,
         )
-
-    try:
-        if request_data.grant_type == GrantType.AUTHORIZATION_CODE:
-            return handle_authorization_code_grant(
-                db=db,
-                code=request_data.code,
-                client_id=client_id,
-                client_secret=client_secret,
-                redirect_uri=request_data.redirect_uri,
-                code_verifier=request_data.code_verifier,
-                scope=request_data.scope,
-            )
-        elif request_data.grant_type == GrantType.REFRESH_TOKEN:
-            return handle_refresh_token_grant(
-                db=db,
-                refresh_token=request_data.refresh_token,
-                client_id=client_id,
-                client_secret=client_secret,
-                scope=request_data.scope,
-            )
-    except OAuthError as e:
-        if used_basic and e.error_code == OAuthErrorCode.INVALID_CLIENT:
-            if e.headers is None:
-                e.headers = {}
-            e.headers["WWW-Authenticate"] = 'Basic realm="oauth"'
-        raise e
+    elif request_data.grant_type == GrantType.REFRESH_TOKEN:
+        return handle_refresh_token_grant(
+            db=db,
+            refresh_token=request_data.refresh_token,
+            client=client,
+            scope=request_data.scope,
+        )
 
     raise OAuthError(
         error_code=OAuthErrorCode.UNSUPPORTED_GRANT_TYPE,
@@ -470,8 +294,8 @@ def token(
 
 @router.post("/revoke")
 def revoke(
-    request: Request,
     request_data: RevocationRequest = Depends(RevocationRequest.as_form),
+    client: OAuthClient = Depends(get_authenticated_client),
     db: Session = Depends(get_db),
 ):
     """
@@ -486,32 +310,8 @@ def revoke(
     guidance of allowing access tokens to expire naturally without revocation due to
     their short lifespan and stateless nature.
     """
-    # Extract credentials (header takes precedence)
-    client_id, client_secret, used_basic = get_client_credentials(
-        request, request_data.client_id, request_data.client_secret
-    )
-
-    if not client_id or not client_secret:
-        raise OAuthError(
-            error_code=OAuthErrorCode.INVALID_CLIENT,
-            description="Invalid client credentials",
-            status_code=401,
-            headers={"WWW-Authenticate": 'Basic realm="oauth"'},
-        )
-
-    # Validate client credentials
-    client = get_client_by_id(db, client_id)
-
-    if not client or not verify_password(client_secret, client.client_secret):
-        raise OAuthError(
-            error_code=OAuthErrorCode.INVALID_CLIENT,
-            description="Invalid client credentials",
-            status_code=401,
-            headers={"WWW-Authenticate": 'Basic realm="oauth"'},
-        )
-
     # Attempt to revoke the token (access or refresh)
-    revoke_token(db, request_data.token, request_data.token_type_hint, client_id)
+    revoke_token(db, request_data.token, request_data.token_type_hint, client.client_id)
 
     # Per RFC 7009 Section 2.2, respond with HTTP 200 even if the token is invalid
     return {"success": True}

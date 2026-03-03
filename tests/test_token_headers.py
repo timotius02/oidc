@@ -57,7 +57,7 @@ def test_authorization_code_grant_headers(mock_db):
     )
 
     mock_query = MagicMock()
-    mock_query.filter.return_value.first.side_effect = [client, code_record]
+    mock_query.filter.return_value.first.return_value = code_record
     mock_db.query.return_value = mock_query
 
     # Mock JWT and token creation to avoid side effects
@@ -71,8 +71,7 @@ def test_authorization_code_grant_headers(mock_db):
         response = handle_authorization_code_grant(
             db=mock_db,
             code="test_code",
-            client_id="test_client",
-            client_secret="test_secret",
+            client=client,
             redirect_uri="http://localhost/callback",
             code_verifier=None,
             scope=None,
@@ -105,7 +104,7 @@ def test_refresh_token_grant_headers(mock_db):
     )
 
     mock_query = MagicMock()
-    mock_query.filter.return_value.first.side_effect = [client, refresh_token_record]
+    mock_query.filter.return_value.first.return_value = refresh_token_record
     mock_db.query.return_value = mock_query
 
     # Mock validations and token creation
@@ -125,8 +124,7 @@ def test_refresh_token_grant_headers(mock_db):
         response = handle_refresh_token_grant(
             db=mock_db,
             refresh_token="old_refresh_token",
-            client_id="test_client",
-            client_secret="test_secret",
+            client=client,
             scope=None,
         )
 

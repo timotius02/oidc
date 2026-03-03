@@ -6,7 +6,6 @@ from typing import Dict, List, Optional
 from sqlalchemy.orm import Session
 
 from app.models.user import User
-from app.oauth.constants import ClientType
 from app.oauth.errors import OAuthError, OAuthErrorCode
 from app.oauth.jwt import (
     create_access_token,
@@ -19,7 +18,6 @@ from app.oauth.jwt import (
 from app.oauth.models import AuthorizationCode, OAuthClient, RefreshToken
 from app.oauth.pkce import verify_s256_code_verifier
 from app.oauth.utils import create_token_response
-from app.services.auth import verify_password
 
 from ..config import settings
 
@@ -62,43 +60,96 @@ def get_client_by_id(db: Session, client_id: str) -> Optional[OAuthClient]:
     return db.query(OAuthClient).filter(OAuthClient.client_id == client_id).first()
 
 
-def validate_client(
-    db: Session,
-    client_id: str,
-    redirect_uri: str,
-    requested_scopes: str,
+def get_validated_client(
+    db: Session, client_id: Optional[str], redirect_uri: Optional[str] = None
 ) -> OAuthClient:
     """
-    Validate OAuth client and its parameters.
+    Validate client_id and redirect_uri for the authorization endpoint.
+
+    Per RFC 6749 Section 4.1.2.1, errors related to client_id or redirect_uri
+    should be shown to the user via an error page and MUST NOT result in
+    a redirect to an untrusted URI.
 
     Args:
         db: Database session
         client_id: Client identifier
-        redirect_uri: Redirect URI from authorization request
-        requested_scopes: Space-separated requested scopes
+        redirect_uri: Optional redirect URI from the request
 
     Returns:
-        OAuthClient if validation succeeds
+        Validated OAuthClient object
 
     Raises:
-        OAuthError if validation fails
+        ValueError: If client_id is missing/invalid or redirect_uri mismatch
     """
+    if not client_id:
+        raise ValueError("Missing required parameter: client_id")
+
     client = get_client_by_id(db, client_id)
-
     if not client:
-        raise OAuthError(
-            error_code=OAuthErrorCode.UNAUTHORIZED_CLIENT, description="Unknown client"
-        )
+        raise ValueError("The client could not be identified.")
 
-    if redirect_uri != client.redirect_uri:
+    # Use registered redirect_uri if not provided in request
+    target_uri = redirect_uri or client.redirect_uri
+
+    if target_uri != client.redirect_uri:
+        raise ValueError("Redirect URI does not match the registered URI.")
+
+    return client
+
+
+def validate_authorization_request(
+    client: OAuthClient,
+    response_type: Optional[str],
+    scope: Optional[str],
+    code_challenge: Optional[str],
+    code_challenge_method: Optional[str],
+) -> str:
+    """
+    Validate strictly OAuth-related parameters for authorization.
+
+    Args:
+        client: The validated OAuthClient
+        response_type: The requested response_type
+        scope: The requested scope(s)
+        code_challenge: PKCE code challenge
+        code_challenge_method: PKCE method
+
+    Returns:
+        The resolved scope string (defaults to client scopes if none provided)
+
+    Raises:
+        OAuthError: For parameters that should result in a redirect with error
+    """
+    # 1. Validate response_type
+    if not response_type:
         raise OAuthError(
             error_code=OAuthErrorCode.INVALID_REQUEST,
-            description="Redirect URI mismatch",
+            description="Missing required parameter: response_type",
         )
 
-    # Validate requested scopes are subset of allowed scopes
+    if response_type != "code":
+        raise OAuthError(
+            error_code=OAuthErrorCode.UNSUPPORTED_RESPONSE_TYPE,
+            description="The authorization server only supports 'code' response type",
+        )
+
+    # 2. Validate PKCE (Enforced S256)
+    if not code_challenge:
+        raise OAuthError(
+            error_code=OAuthErrorCode.INVALID_REQUEST,
+            description="Missing required parameter: code_challenge (PKCE is required)",
+        )
+
+    if code_challenge_method != "S256":
+        raise OAuthError(
+            error_code=OAuthErrorCode.INVALID_REQUEST,
+            description="Missing/invalid code_challenge_method. Only 'S256' supported.",
+        )
+
+    # 3. Validate Scope
+    effective_scope = scope or client.scopes
     allowed_scopes = set(client.scopes.split())
-    requested = set(requested_scopes.split())
+    requested = set(effective_scope.split())
 
     if not requested.issubset(allowed_scopes):
         invalid_scopes = requested - allowed_scopes
@@ -107,7 +158,26 @@ def validate_client(
             description=f"Requested scopes not allowed: {' '.join(invalid_scopes)}",
         )
 
-    return client
+    return effective_scope
+
+
+def prepare_consent_view_data(
+    db: Session, client_id: str, scope: str
+) -> tuple[OAuthClient, List[Dict[str, str]]]:
+    """
+    Gather client and scope details for the consent screen.
+
+    Returns:
+        Tuple of (OAuthClient, list of scope descriptions)
+    """
+    client = get_client_by_id(db, client_id)
+    if not client:
+        raise ValueError("Invalid client")
+
+    scopes = scope.split()
+    scope_descriptions = get_scope_descriptions(scopes)
+
+    return client, scope_descriptions
 
 
 def create_authorization_code(
@@ -199,8 +269,7 @@ def create_refresh_token(
 def exchange_code_for_tokens(
     db: Session,
     code: str,
-    client_id: str,
-    client_secret: Optional[str] = None,
+    client: OAuthClient,
     redirect_uri: Optional[str] = None,
     code_verifier: Optional[str] = None,
 ) -> tuple[str, str | None, str, str]:
@@ -217,40 +286,11 @@ def exchange_code_for_tokens(
 
     Returns:
         Tuple of (access_token, refresh_token)
+        Tuple of (access_token, id_token, refresh_token, granted_scope)
 
     Raises:
         OAuthError if code is invalid, expired, or client authentication fails
     """
-    # Validate client credentials
-    client = db.query(OAuthClient).filter(OAuthClient.client_id == client_id).first()
-
-    if not client:
-        raise OAuthError(
-            error_code=OAuthErrorCode.INVALID_CLIENT,
-            description="Client authentication failed",
-            status_code=401,
-        )
-
-    # Confidential clients MUST provide a valid secret.
-    # Public clients MAY provide one (if they have it), but it's optional.
-    if client.client_type == ClientType.CONFIDENTIAL:
-        if not client_secret or not verify_password(
-            client_secret, client.client_secret
-        ):
-            raise OAuthError(
-                error_code=OAuthErrorCode.INVALID_CLIENT,
-                description="Client authentication failed",
-                status_code=401,
-            )
-    elif client_secret:
-        # If secret provided for public client, it must be valid.
-        if not verify_password(client_secret, client.client_secret):
-            raise OAuthError(
-                error_code=OAuthErrorCode.INVALID_CLIENT,
-                description="Client authentication failed",
-                status_code=401,
-            )
-
     # Find the authorization code
     auth_code = (
         db.query(AuthorizationCode).filter(AuthorizationCode.code == code).first()
@@ -269,7 +309,7 @@ def exchange_code_for_tokens(
         )
 
     # Validate client_id matches
-    if auth_code.client_id != client_id:
+    if auth_code.client_id != client.client_id:
         raise OAuthError(
             error_code=OAuthErrorCode.INVALID_GRANT, description="Client ID mismatch"
         )
@@ -347,8 +387,7 @@ def exchange_code_for_tokens(
 def handle_authorization_code_grant(
     db: Session,
     code: Optional[str],
-    client_id: str,
-    client_secret: Optional[str],
+    client: OAuthClient,
     redirect_uri: Optional[str],
     code_verifier: Optional[str],
     scope: Optional[str],
@@ -364,8 +403,7 @@ def handle_authorization_code_grant(
     access_token, id_token, refresh_token, granted_scope = exchange_code_for_tokens(
         db=db,
         code=code,
-        client_id=client_id,
-        client_secret=client_secret,
+        client=client,
         redirect_uri=redirect_uri,
         code_verifier=code_verifier,
     )
@@ -387,8 +425,7 @@ def handle_authorization_code_grant(
 def handle_refresh_token_grant(
     db: Session,
     refresh_token: Optional[str],
-    client_id: str,
-    client_secret: Optional[str],
+    client: OAuthClient,
     scope: Optional[str],
 ):
     """
@@ -402,39 +439,11 @@ def handle_refresh_token_grant(
             description="Missing required parameter: refresh_token",
         )
 
-    # Validate client credentials
-    client = db.query(OAuthClient).filter(OAuthClient.client_id == client_id).first()
-
-    if not client:
-        raise OAuthError(
-            error_code=OAuthErrorCode.INVALID_CLIENT,
-            description="Client authentication failed",
-            status_code=401,
-        )
-
-    # Confidential clients MUST provide a valid secret.
-    if client.client_type == ClientType.CONFIDENTIAL:
-        if not client_secret or not verify_password(
-            client_secret, client.client_secret
-        ):
-            raise OAuthError(
-                error_code=OAuthErrorCode.INVALID_CLIENT,
-                description="Client authentication failed",
-                status_code=401,
-            )
-    elif client_secret:
-        # If secret provided for public client, it must be valid.
-        if not verify_password(client_secret, client.client_secret):
-            raise OAuthError(
-                error_code=OAuthErrorCode.INVALID_CLIENT,
-                description="Client authentication failed",
-                status_code=401,
-            )
     # Validate refresh token
     token_record = validate_refresh_token(
         db=db,
         token=refresh_token,
-        client_id=client_id,
+        client_id=client.client_id,
     )
 
     # Handle scope - must be subset of original scope
@@ -456,7 +465,7 @@ def handle_refresh_token_grant(
     # Create new access token
     access_token, _ = create_access_token(
         subject=str(token_record.user_id),
-        audience=client_id,
+        audience=client.client_id,
         scope=final_scope,
     )
 

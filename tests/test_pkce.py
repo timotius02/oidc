@@ -216,7 +216,7 @@ class TestPKCEValidation:
         )
 
         mock_query = MagicMock()
-        mock_query.filter.return_value.first.side_effect = [client, auth_code]
+        mock_query.filter.return_value.first.return_value = auth_code
         mock_db.query.return_value = mock_query
 
         # Verifier too short (42 chars)
@@ -224,7 +224,7 @@ class TestPKCEValidation:
             exchange_code_for_tokens(
                 db=mock_db,
                 code="test_code",
-                client_id="test_client",
+                client=client,
                 code_verifier="a" * 42,
                 redirect_uri="http://localhost",
             )
@@ -243,7 +243,7 @@ class TestPKCEValidation:
         )
 
         mock_query = MagicMock()
-        mock_query.filter.return_value.first.side_effect = [client, auth_code]
+        mock_query.filter.return_value.first.return_value = auth_code
         mock_db.query.return_value = mock_query
 
         # Verifier too long (129 chars)
@@ -251,7 +251,7 @@ class TestPKCEValidation:
             exchange_code_for_tokens(
                 db=mock_db,
                 code="test_code",
-                client_id="test_client",
+                client=client,
                 code_verifier="a" * 129,
                 redirect_uri="http://localhost",
             )

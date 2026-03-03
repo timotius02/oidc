@@ -1022,8 +1022,7 @@ class TestRefreshTokenGrantEndpoint:
                     result = handle_refresh_token_grant(
                         db=mock_db,
                         refresh_token=valid_refresh_token_record.token,
-                        client_id=sample_client.client_id,
-                        client_secret="test_secret",
+                        client=sample_client,
                         scope=None,
                     )
 
@@ -1048,31 +1047,13 @@ class TestRefreshTokenGrantEndpoint:
             handle_refresh_token_grant(
                 db=mock_db,
                 refresh_token=None,
-                client_id=sample_client_id,
-                client_secret="test_secret",
+                client=sample_client,
                 scope=None,
             )
 
         assert exc_info.value.error_code == OAuthErrorCode.INVALID_REQUEST
         assert "Missing required parameter" in exc_info.value.description
         assert "refresh_token" in exc_info.value.description
-
-    def test_error_for_invalid_client_credentials(self, mock_db, sample_client_id):
-        """Test error for invalid client credentials."""
-        # Setup mocks - client not found
-        mock_db.query.return_value.filter.return_value.first.return_value = None
-
-        with pytest.raises(OAuthError) as exc_info:
-            handle_refresh_token_grant(
-                db=mock_db,
-                refresh_token="some_token",
-                client_id=sample_client_id,
-                client_secret="wrong_secret",
-                scope=None,
-            )
-
-        assert exc_info.value.error_code == OAuthErrorCode.INVALID_CLIENT
-        assert "authentication failed" in exc_info.value.description.lower()
 
     def test_error_for_invalid_refresh_token(
         self, mock_db, sample_client, sample_client_id
@@ -1094,8 +1075,7 @@ class TestRefreshTokenGrantEndpoint:
                 handle_refresh_token_grant(
                     db=mock_db,
                     refresh_token="invalid_token",
-                    client_id=sample_client_id,
-                    client_secret="test_secret",
+                    client=sample_client,
                     scope=None,
                 )
 
@@ -1129,8 +1109,7 @@ class TestRefreshTokenGrantEndpoint:
                     result = handle_refresh_token_grant(
                         db=mock_db,
                         refresh_token=valid_refresh_token_record.token,
-                        client_id=sample_client.client_id,
-                        client_secret="test_secret",
+                        client=sample_client,
                         scope=reduced_scope,
                     )
 
@@ -1159,8 +1138,7 @@ class TestRefreshTokenGrantEndpoint:
                 handle_refresh_token_grant(
                     db=mock_db,
                     refresh_token=valid_refresh_token_record.token,
-                    client_id=sample_client.client_id,
-                    client_secret="test_secret",
+                    client=sample_client,
                     scope=invalid_scope,
                 )
 
@@ -1191,8 +1169,7 @@ class TestRefreshTokenGrantEndpoint:
                     result = handle_refresh_token_grant(
                         db=mock_db,
                         refresh_token=valid_refresh_token_record.token,
-                        client_id=sample_client.client_id,
-                        client_secret="test_secret",
+                        client=sample_client,
                         scope=None,  # No scope provided
                     )
 
@@ -1215,10 +1192,7 @@ def test_refresh_token_grant_without_redirect_uri_succeeds(
     """
     mock_query = MagicMock()
     # First call: validate client, Second call: validate_refresh_token
-    mock_query.filter.return_value.first.side_effect = [
-        sample_client,
-        valid_refresh_token_record,
-    ]
+    mock_query.filter.return_value.first.return_value = valid_refresh_token_record
     mock_db.query.return_value = mock_query
 
     with (
@@ -1236,8 +1210,7 @@ def test_refresh_token_grant_without_redirect_uri_succeeds(
         response = handle_refresh_token_grant(
             db=mock_db,
             refresh_token="valid_refresh_token_123",
-            client_id=sample_client.client_id,
-            client_secret="test_secret",
+            client=sample_client,
             scope=None,
         )
 

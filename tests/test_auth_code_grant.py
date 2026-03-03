@@ -53,7 +53,7 @@ def test_auth_code_grant_without_redirect_uri_succeeds_if_missing_in_auth_reques
     )
 
     mock_query = MagicMock()
-    mock_query.filter.return_value.first.side_effect = [client, code_record]
+    mock_query.filter.return_value.first.return_value = code_record
     mock_db.query.return_value = mock_query
 
     with (
@@ -64,8 +64,7 @@ def test_auth_code_grant_without_redirect_uri_succeeds_if_missing_in_auth_reques
         response = handle_authorization_code_grant(
             db=mock_db,
             code="test_code",
-            client_id="test_client",
-            client_secret="test_secret",
+            client=client,
             redirect_uri=None,
             code_verifier=None,
             scope=None,
@@ -96,15 +95,14 @@ def test_auth_code_grant_fails_without_redirect_uri_if_present_in_auth_request(m
     )
 
     mock_query = MagicMock()
-    mock_query.filter.return_value.first.side_effect = [client, code_record]
+    mock_query.filter.return_value.first.return_value = code_record
     mock_db.query.return_value = mock_query
 
     with pytest.raises(OAuthError) as exc:
         handle_authorization_code_grant(
             db=mock_db,
             code="test_code",
-            client_id="test_client",
-            client_secret="test_secret",
+            client=client,
             redirect_uri=None,  # Missing!
             code_verifier=None,
             scope=None,
