@@ -48,6 +48,20 @@ def get_scope_descriptions(scopes: List[str]) -> List[Dict[str, str]]:
     ]
 
 
+def get_client_by_id(db: Session, client_id: str) -> Optional[OAuthClient]:
+    """
+    Retrieve an OAuth client by its client_id.
+
+    Args:
+        db: Database session
+        client_id: The client identifier
+
+    Returns:
+        OAuthClient object if found, otherwise None
+    """
+    return db.query(OAuthClient).filter(OAuthClient.client_id == client_id).first()
+
+
 def validate_client(
     db: Session,
     client_id: str,
@@ -69,7 +83,7 @@ def validate_client(
     Raises:
         OAuthError if validation fails
     """
-    client = db.query(OAuthClient).filter(OAuthClient.client_id == client_id).first()
+    client = get_client_by_id(db, client_id)
 
     if not client:
         raise OAuthError(

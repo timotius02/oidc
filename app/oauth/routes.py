@@ -13,10 +13,10 @@ from app.oauth.errors import (
     OAuthErrorCode,
     create_authorization_error_response,
 )
-from app.oauth.models import OAuthClient
 from app.oauth.schemas import AuthorizationRequest, RevocationRequest, TokenRequest
 from app.oauth.service import (
     create_authorization_code,
+    get_client_by_id,
     get_scope_descriptions,
     get_userinfo_claims,
     handle_authorization_code_grant,
@@ -48,7 +48,7 @@ def validate_csrf_token(request: Request, submitted_token: str) -> bool:
 def render_consent_html(
     request: Request,
     user,
-    client: OAuthClient,
+    client,
     scope_descriptions: list,
     csrf_token: str,
 ) -> HTMLResponse:
@@ -145,7 +145,7 @@ def authorize(
     # =========================================================================
     # This must be done BEFORE using redirect_uri for any error redirects
     # to prevent open redirect attacks
-    client = db.query(OAuthClient).filter(OAuthClient.client_id == client_id).first()
+    client = get_client_by_id(db, client_id)
 
     if not client:
         # Unknown client - show error page, don't redirect
@@ -290,11 +290,7 @@ def consent_page(
         return RedirectResponse("/auth/login")
 
     # Get client info for display
-    client = (
-        db.query(OAuthClient)
-        .filter(OAuthClient.client_id == params["client_id"])
-        .first()
-    )
+    client = get_client_by_id(db, params["client_id"])
 
     if not client:
         raise HTTPException(400, "Invalid client")
@@ -504,7 +500,7 @@ def revoke(
         )
 
     # Validate client credentials
-    client = db.query(OAuthClient).filter(OAuthClient.client_id == client_id).first()
+    client = get_client_by_id(db, client_id)
 
     if not client or not verify_password(client_secret, client.client_secret):
         raise OAuthError(
