@@ -21,7 +21,7 @@ from sqlalchemy.pool import StaticPool
 from app.db import Base, get_db
 from app.main import app
 from app.oauth.models import OAuthClient, RefreshToken
-from app.oauth.service import revoke_token
+from app.oauth.services.token import revoke_token
 from app.services.auth import hash_password
 
 # =============================================================================

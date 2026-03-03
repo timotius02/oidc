@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from app.oauth.errors import OAuthError
 from app.oauth.models import AuthorizationCode, OAuthClient
 from app.oauth.pkce import verify_s256_code_verifier
-from app.oauth.service import exchange_code_for_tokens
+from app.oauth.services.token import exchange_code_for_tokens
 
 
 class TestVerifyS256CodeVerifier:

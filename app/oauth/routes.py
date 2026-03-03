@@ -14,16 +14,18 @@ from app.oauth.errors import (
 )
 from app.oauth.models import OAuthClient
 from app.oauth.schemas import AuthorizationRequest, RevocationRequest, TokenRequest
-from app.oauth.service import (
+from app.oauth.services.authorization import (
     create_authorization_code,
-    get_userinfo_claims,
-    get_validated_client,
-    handle_authorization_code_grant,
-    handle_refresh_token_grant,
     prepare_consent_view_data,
-    revoke_token,
     validate_authorization_request,
 )
+from app.oauth.services.client import get_validated_client
+from app.oauth.services.token import (
+    handle_authorization_code_grant,
+    handle_refresh_token_grant,
+    revoke_token,
+)
+from app.oauth.services.userinfo import get_userinfo_claims
 from app.oauth.utils import get_current_user
 from app.templates_config import templates
 

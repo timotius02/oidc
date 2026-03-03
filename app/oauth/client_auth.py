@@ -8,7 +8,8 @@ from app.db import get_db
 from app.oauth.constants import ClientType
 from app.oauth.errors import OAuthError, OAuthErrorCode
 from app.oauth.models import OAuthClient
-from app.oauth.service import get_client_by_id, verify_password
+from app.oauth.services.client import get_client_by_id
+from app.services.auth import verify_password
 
 
 def get_client_credentials(

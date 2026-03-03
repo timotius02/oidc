@@ -10,7 +10,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.oauth.models import AuthorizationCode, OAuthClient
-from app.oauth.service import (
+from app.oauth.services.token import (
     handle_authorization_code_grant,
     handle_refresh_token_grant,
 )
@@ -63,10 +63,13 @@ def test_authorization_code_grant_headers(mock_db):
     # Mock JWT and token creation to avoid side effects
     with (
         patch(
-            "app.oauth.service.create_access_token",
+            "app.oauth.services.token.create_access_token",
             return_value=("access_token", "jti"),
         ),
-        patch("app.oauth.service.create_refresh_token", return_value="refresh_token"),
+        patch(
+            "app.oauth.services.token.create_refresh_token",
+            return_value="refresh_token",
+        ),
     ):
         response = handle_authorization_code_grant(
             db=mock_db,
@@ -110,15 +113,16 @@ def test_refresh_token_grant_headers(mock_db):
     # Mock validations and token creation
     with (
         patch(
-            "app.oauth.service.validate_refresh_token",
+            "app.oauth.services.token.validate_refresh_token",
             return_value=refresh_token_record,
         ),
         patch(
-            "app.oauth.service.create_access_token",
+            "app.oauth.services.token.create_access_token",
             return_value=("new_access_token", "jti"),
         ),
         patch(
-            "app.oauth.service.rotate_refresh_token", return_value="new_refresh_token"
+            "app.oauth.services.token.rotate_refresh_token",
+            return_value="new_refresh_token",
         ),
     ):
         response = handle_refresh_token_grant(

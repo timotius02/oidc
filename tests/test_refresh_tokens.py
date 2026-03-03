@@ -26,8 +26,10 @@ from app.oauth.jwt import (
     validate_refresh_token,
 )
 from app.oauth.models import OAuthClient, RefreshToken
-from app.oauth.service import create_refresh_token as service_create_refresh_token
-from app.oauth.service import handle_refresh_token_grant
+from app.oauth.services.token import (
+    create_refresh_token as service_create_refresh_token,
+)
+from app.oauth.services.token import handle_refresh_token_grant
 from app.services.auth import hash_password
 
 # =============================================================================
@@ -433,7 +435,7 @@ class TestRefreshTokenRotation:
 
         # Mock create_refresh_token to return a known token
         with patch(
-            "app.oauth.service.create_refresh_token",
+            "app.oauth.services.token.create_refresh_token",
             return_value="new_refresh_token_456",
         ):
             new_token = rotate_refresh_token(mock_db, valid_refresh_token_record)
@@ -466,7 +468,7 @@ class TestRefreshTokenRotation:
 
         # Rotate token
         with patch(
-            "app.oauth.service.create_refresh_token",
+            "app.oauth.services.token.create_refresh_token",
             return_value="new_refresh_token_456",
         ):
             rotate_refresh_token(mock_db, valid_refresh_token_record)
@@ -500,7 +502,7 @@ class TestRefreshTokenRotation:
 
         # Rotate token
         with patch(
-            "app.oauth.service.create_refresh_token",
+            "app.oauth.services.token.create_refresh_token",
             return_value="new_refresh_token_456",
         ):
             rotate_refresh_token(mock_db, valid_refresh_token_record)
@@ -535,7 +537,7 @@ class TestRefreshTokenRotation:
 
         # Rotate token
         with patch(
-            "app.oauth.service.create_refresh_token",
+            "app.oauth.services.token.create_refresh_token",
             return_value="new_refresh_token_456",
         ):
             rotate_refresh_token(mock_db, valid_refresh_token_record)
@@ -1008,15 +1010,15 @@ class TestRefreshTokenGrantEndpoint:
         )
 
         with patch(
-            "app.oauth.service.validate_refresh_token",
+            "app.oauth.services.token.validate_refresh_token",
             return_value=valid_refresh_token_record,
         ):
             with patch(
-                "app.oauth.service.rotate_refresh_token",
+                "app.oauth.services.token.rotate_refresh_token",
                 return_value="new_refresh_token",
             ):
                 with patch(
-                    "app.oauth.service.create_access_token",
+                    "app.oauth.services.token.create_access_token",
                     return_value=("new_access_token", "jti"),
                 ):
                     result = handle_refresh_token_grant(
@@ -1065,7 +1067,7 @@ class TestRefreshTokenGrantEndpoint:
         )
 
         with patch(
-            "app.oauth.service.validate_refresh_token",
+            "app.oauth.services.token.validate_refresh_token",
             side_effect=OAuthError(
                 error_code=OAuthErrorCode.INVALID_GRANT,
                 description="Invalid refresh token",
@@ -1095,15 +1097,15 @@ class TestRefreshTokenGrantEndpoint:
         reduced_scope = "openid profile"
 
         with patch(
-            "app.oauth.service.validate_refresh_token",
+            "app.oauth.services.token.validate_refresh_token",
             return_value=valid_refresh_token_record,
         ):
             with patch(
-                "app.oauth.service.rotate_refresh_token",
+                "app.oauth.services.token.rotate_refresh_token",
                 return_value="new_refresh_token",
             ):
                 with patch(
-                    "app.oauth.service.create_access_token",
+                    "app.oauth.services.token.create_access_token",
                     return_value=("new_access_token", "jti"),
                 ):
                     result = handle_refresh_token_grant(
@@ -1131,7 +1133,7 @@ class TestRefreshTokenGrantEndpoint:
         invalid_scope = "openid profile admin"
 
         with patch(
-            "app.oauth.service.validate_refresh_token",
+            "app.oauth.services.token.validate_refresh_token",
             return_value=valid_refresh_token_record,
         ):
             with pytest.raises(OAuthError) as exc_info:
@@ -1155,15 +1157,15 @@ class TestRefreshTokenGrantEndpoint:
         )
 
         with patch(
-            "app.oauth.service.validate_refresh_token",
+            "app.oauth.services.token.validate_refresh_token",
             return_value=valid_refresh_token_record,
         ):
             with patch(
-                "app.oauth.service.rotate_refresh_token",
+                "app.oauth.services.token.rotate_refresh_token",
                 return_value="new_refresh_token",
             ):
                 with patch(
-                    "app.oauth.service.create_access_token",
+                    "app.oauth.services.token.create_access_token",
                     return_value=("new_access_token", "jti"),
                 ):
                     result = handle_refresh_token_grant(
@@ -1197,14 +1199,14 @@ def test_refresh_token_grant_without_redirect_uri_succeeds(
 
     with (
         patch(
-            "app.oauth.service.validate_refresh_token",
+            "app.oauth.services.token.validate_refresh_token",
             return_value=valid_refresh_token_record,
         ),
         patch(
-            "app.oauth.service.create_access_token",
+            "app.oauth.services.token.create_access_token",
             return_value=("access", "jti"),
         ),
-        patch("app.oauth.service.rotate_refresh_token", return_value="rotated"),
+        patch("app.oauth.services.token.rotate_refresh_token", return_value="rotated"),
     ):
         # Call WITHOUT redirect_uri
         response = handle_refresh_token_grant(

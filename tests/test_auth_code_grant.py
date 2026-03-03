@@ -17,7 +17,7 @@ from app.db import Base, get_db
 from app.main import app
 from app.oauth.errors import OAuthError
 from app.oauth.models import AuthorizationCode, OAuthClient
-from app.oauth.service import handle_authorization_code_grant
+from app.oauth.services.token import handle_authorization_code_grant
 from app.services.auth import hash_password
 
 
@@ -57,8 +57,11 @@ def test_auth_code_grant_without_redirect_uri_succeeds_if_missing_in_auth_reques
     mock_db.query.return_value = mock_query
 
     with (
-        patch("app.oauth.service.create_access_token", return_value=("access", "jti")),
-        patch("app.oauth.service.create_refresh_token", return_value="refresh"),
+        patch(
+            "app.oauth.services.token.create_access_token",
+            return_value=("access", "jti"),
+        ),
+        patch("app.oauth.services.token.create_refresh_token", return_value="refresh"),
     ):
         # Call WITHOUT redirect_uri
         response = handle_authorization_code_grant(

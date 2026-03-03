@@ -248,7 +248,9 @@ def rotate_refresh_token(
         New refresh token string
     """
     # Import here to avoid circular import (service.py imports from jwt.py)
-    from app.oauth.service import create_refresh_token as service_create_refresh_token
+    from app.oauth.services.token import (
+        create_refresh_token as service_create_refresh_token,
+    )
 
     # Create new token using service layer (creates database record)
     new_token = service_create_refresh_token(
