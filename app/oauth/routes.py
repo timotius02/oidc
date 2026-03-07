@@ -46,9 +46,9 @@ def render_consent_html(
         HTMLResponse with the rendered consent screen
     """
     return templates.TemplateResponse(
+        request,
         "consent.html",
         {
-            "request": request,
             "client_name": client.name,
             "client_logo_uri": client.logo_uri,
             "user_email": user.email,
@@ -79,9 +79,9 @@ def authorize(
         client = client_service.get_validated_client(client_id, redirect_uri)
     except ValueError as e:
         return templates.TemplateResponse(
+            request,
             "error.html",
             {
-                "request": request,
                 "error_title": "Invalid Request",
                 "error_message": str(e),
             },

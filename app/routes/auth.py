@@ -1,63 +1,59 @@
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.params import Query
 from fastapi.responses import HTMLResponse, RedirectResponse
-from sqlalchemy.orm import Session
 
-from app.db import get_db
-from app.models.user import User
 from app.schemas.user import UserCreate
-from app.services.auth import hash_password, verify_password
+from app.services.auth import UserService
+from app.templates_config import templates
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/register")
-def register(data: UserCreate, db: Session = Depends(get_db)):
-    existing = db.query(User).filter(User.email == data.email).first()
+def register(
+    data: UserCreate,
+    user_service: Annotated[UserService, Depends(UserService)],
+):
+    existing = user_service.get_user_by_email(data.email)
     if existing:
         raise HTTPException(400, "Email already registered")
 
-    user = User(
-        email=data.email,
-        password_hash=hash_password(data.password),
-    )
-
-    db.add(user)
-    db.commit()
-    db.refresh(user)
+    user = user_service.create_user(data.email, data.password)
 
     return {"id": user.id, "email": user.email}
 
 
 @router.get("/login", response_class=HTMLResponse)
-def login_page(next: str = Query("/")):  # default redirect is "/"
-    return f"""
-    <html>
-        <body>
-            <h2>Login</h2>
-            <form method="post" action="/auth/login">
-                <input name="email" placeholder="Email" />
-                <input name="password" type="password" placeholder="Password" />
-                <input type="hidden" name="next" value="{next}" />
-                <button type="submit">Login</button>
-            </form>
-        </body>
-    </html>
-    """
+def login_page(request: Request, next: str = Query("/")):
+    return templates.TemplateResponse(
+        request,
+        "login.html",
+        {"next": next},
+    )
 
 
 @router.post("/login")
 def login(
     request: Request,
-    email: str = Form(...),
-    password: str = Form(...),
-    next: str = Form("/"),  # get from the hidden input
-    db: Session = Depends(get_db),
+    email: Annotated[str, Form()],
+    password: Annotated[str, Form()],
+    user_service: Annotated[UserService, Depends(UserService)],
+    next: Annotated[str, Form()] = "/",
 ):
-    user = db.query(User).filter(User.email == email).first()
+    user = user_service.authenticate_user(email, password)
 
-    if not user or not verify_password(password, user.password_hash):
-        raise HTTPException(401, "Invalid credentials")
+    if not user:
+        # Re-render login page with error
+        return templates.TemplateResponse(
+            request,
+            "login.html",
+            {
+                "next": next,
+                "error": "Invalid email or password",
+            },
+        )
 
     request.session["user_id"] = str(user.id)
 
