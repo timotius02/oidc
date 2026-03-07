@@ -17,7 +17,7 @@ from app.db import Base, get_db
 from app.main import app
 from app.oauth.errors import OAuthError
 from app.oauth.models import AuthorizationCode, OAuthClient
-from app.oauth.services.token import handle_authorization_code_grant
+from app.oauth.services.token import TokenService
 from app.services.auth import hash_password
 
 
@@ -56,16 +56,16 @@ def test_auth_code_grant_without_redirect_uri_succeeds_if_missing_in_auth_reques
     mock_query.filter.return_value.first.return_value = code_record
     mock_db.query.return_value = mock_query
 
+    service = TokenService(mock_db)
     with (
         patch(
             "app.oauth.services.token.create_access_token",
             return_value=("access", "jti"),
         ),
-        patch("app.oauth.services.token.create_refresh_token", return_value="refresh"),
+        patch.object(TokenService, "create_refresh_token", return_value="refresh"),
     ):
         # Call WITHOUT redirect_uri
-        response = handle_authorization_code_grant(
-            db=mock_db,
+        response = service.handle_authorization_code_grant(
             code="test_code",
             client=client,
             redirect_uri=None,
@@ -101,9 +101,9 @@ def test_auth_code_grant_fails_without_redirect_uri_if_present_in_auth_request(m
     mock_query.filter.return_value.first.return_value = code_record
     mock_db.query.return_value = mock_query
 
+    service = TokenService(mock_db)
     with pytest.raises(OAuthError) as exc:
-        handle_authorization_code_grant(
-            db=mock_db,
+        service.handle_authorization_code_grant(
             code="test_code",
             client=client,
             redirect_uri=None,  # Missing!

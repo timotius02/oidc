@@ -12,18 +12,10 @@ from app.oauth.errors import (
 )
 from app.oauth.models import OAuthClient
 from app.oauth.schemas import AuthorizationRequest, RevocationRequest, TokenRequest
-from app.oauth.services.authorization import (
-    create_authorization_code,
-    prepare_consent_view_data,
-    validate_authorization_request,
-)
-from app.oauth.services.client import get_validated_client
-from app.oauth.services.token import (
-    handle_authorization_code_grant,
-    handle_refresh_token_grant,
-    revoke_token,
-)
-from app.oauth.services.userinfo import get_userinfo_claims
+from app.oauth.services.authorization import AuthorizationService
+from app.oauth.services.client import ClientService
+from app.oauth.services.token import TokenService
+from app.oauth.services.userinfo import UserInfoService
 from app.oauth.utils import get_current_user
 from app.security.csrf import generate_csrf_token, verify_csrf
 from app.templates_config import templates
@@ -69,6 +61,8 @@ def authorize(
     request: Request,
     params: AuthorizationRequest = Depends(),
     db: Session = Depends(get_db),
+    client_service: ClientService = Depends(ClientService),
+    auth_service: AuthorizationService = Depends(AuthorizationService),
 ):
     """
     OAuth 2.0 Authorization Endpoint.
@@ -80,7 +74,7 @@ def authorize(
 
     # 2. Hard Validation (Errors here show an error page, no redirect)
     try:
-        client = get_validated_client(db, client_id, redirect_uri)
+        client = client_service.get_validated_client(client_id, redirect_uri)
     except ValueError as e:
         return templates.TemplateResponse(
             "error.html",
@@ -96,7 +90,7 @@ def authorize(
     # Use stored values if current ones are missing
     resolved_redirect_uri = redirect_uri or client.redirect_uri
     try:
-        effective_scope = validate_authorization_request(
+        effective_scope = auth_service.validate_authorization_request(
             client=client,
             response_type=params.response_type or stored.get("response_type"),
             scope=params.scope or stored.get("scope"),
@@ -137,6 +131,7 @@ def authorize(
 def consent_page(
     request: Request,
     db: Session = Depends(get_db),
+    auth_service: AuthorizationService = Depends(AuthorizationService),
 ):
     """
     Display the consent screen for the user to approve or deny authorization.
@@ -150,8 +145,8 @@ def consent_page(
         return RedirectResponse("/auth/login")
 
     try:
-        client, scope_descriptions = prepare_consent_view_data(
-            db, params["client_id"], params["scope"]
+        client, scope_descriptions = auth_service.prepare_consent_view_data(
+            params["client_id"], params["scope"]
         )
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -165,6 +160,7 @@ def consent_page(
 def approve_consent(
     request: Request,
     db: Session = Depends(get_db),
+    auth_service: AuthorizationService = Depends(AuthorizationService),
 ):
     """
     Handle user approval of authorization request.
@@ -183,8 +179,7 @@ def approve_consent(
     # Clear CSRF token after use
     request.session.pop("csrf_token", None)
 
-    code = create_authorization_code(
-        db=db,
+    code = auth_service.create_authorization_code(
         user_id=str(user.id),
         client_id=params["client_id"],
         redirect_uri=params["redirect_uri"],
@@ -236,7 +231,7 @@ def token(
     request: Request,
     request_data: TokenRequest = Depends(TokenRequest.as_form),
     client: OAuthClient = Depends(get_authenticated_client),
-    db: Session = Depends(get_db),
+    token_service: TokenService = Depends(TokenService),
 ):
     """
     OAuth 2.0 Token Endpoint.
@@ -251,8 +246,7 @@ def token(
 
     """
     if request_data.grant_type == GrantType.AUTHORIZATION_CODE:
-        return handle_authorization_code_grant(
-            db=db,
+        return token_service.handle_authorization_code_grant(
             code=request_data.code,
             client=client,
             redirect_uri=request_data.redirect_uri,
@@ -260,8 +254,7 @@ def token(
             scope=request_data.scope,
         )
     elif request_data.grant_type == GrantType.REFRESH_TOKEN:
-        return handle_refresh_token_grant(
-            db=db,
+        return token_service.handle_refresh_token_grant(
             refresh_token=request_data.refresh_token,
             client=client,
             scope=request_data.scope,
@@ -277,7 +270,7 @@ def token(
 def revoke(
     request_data: RevocationRequest = Depends(RevocationRequest.as_form),
     client: OAuthClient = Depends(get_authenticated_client),
-    db: Session = Depends(get_db),
+    token_service: TokenService = Depends(TokenService),
 ):
     """
     OAuth 2.0 Token Revocation Endpoint (RFC 7009).
@@ -292,7 +285,9 @@ def revoke(
     their short lifespan and stateless nature.
     """
     # Attempt to revoke the token (access or refresh)
-    revoke_token(db, request_data.token, request_data.token_type_hint, client.client_id)
+    token_service.revoke_token(
+        request_data.token, request_data.token_type_hint, client.client_id
+    )
 
     # Per RFC 7009 Section 2.2, respond with HTTP 200 even if the token is invalid
     return {"success": True}
@@ -301,7 +296,7 @@ def revoke(
 @router.get("/userinfo")
 def userinfo(
     request: Request,
-    db: Session = Depends(get_db),
+    userinfo_service: UserInfoService = Depends(UserInfoService),
 ):
     """
     OIDC UserInfo Endpoint per OpenID Connect Core §5.3.
@@ -321,7 +316,7 @@ def userinfo(
     access_token = auth_header[7:]  # Remove "Bearer " prefix
 
     try:
-        claims = get_userinfo_claims(db, access_token)
+        claims = userinfo_service.get_userinfo_claims(access_token)
     except OAuthError as e:
         # Per RFC 6750, insufficient_scope returns 403, others return 401
         status_code = 403 if e.error_code == OAuthErrorCode.INSUFFICIENT_SCOPE else 401

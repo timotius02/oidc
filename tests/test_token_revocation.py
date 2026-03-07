@@ -21,7 +21,7 @@ from sqlalchemy.pool import StaticPool
 from app.db import Base, get_db
 from app.main import app
 from app.oauth.models import OAuthClient, RefreshToken
-from app.oauth.services.token import revoke_token
+from app.oauth.services.token import TokenService
 from app.services.auth import hash_password
 
 # =============================================================================
@@ -97,8 +97,7 @@ class TestRevokeTokenEndpoint:
         mock_db.query.return_value = mock_query
         mock_db.commit = MagicMock()
 
-        revoke_token(
-            db=mock_db,
+        TokenService(mock_db).revoke_token(
             token="refresh_token_to_revoke",
             client_id=sample_client_id,
         )
@@ -145,8 +144,7 @@ class TestRevokeTokenEndpoint:
         mock_db.query.return_value = mock_query
         mock_db.commit = MagicMock()
 
-        revoke_token(
-            db=mock_db,
+        TokenService(mock_db).revoke_token(
             token="current_token",
             client_id=sample_client_id,
         )
@@ -176,8 +174,7 @@ class TestRevokeTokenEndpoint:
         mock_db.query.return_value = mock_query
         mock_db.commit = MagicMock()
 
-        revoke_token(
-            db=mock_db,
+        TokenService(mock_db).revoke_token(
             token="refresh_token",
             client_id="different_client",
         )
@@ -191,8 +188,7 @@ class TestRevokeTokenEndpoint:
         mock_query.filter.return_value.first.return_value = None
         mock_db.query.return_value = mock_query
 
-        revoke_token(
-            db=mock_db,
+        TokenService(mock_db).revoke_token(
             token="nonexistent_token",
             client_id="some_client",
         )
@@ -218,8 +214,7 @@ class TestRevokeTokenEndpoint:
         mock_db.query.return_value = mock_query
         mock_db.commit = MagicMock()
 
-        revoke_token(
-            db=mock_db,
+        TokenService(mock_db).revoke_token(
             token="refresh_token_with_hint",
             token_type_hint="refresh_token",
             client_id=sample_client_id,
@@ -233,8 +228,7 @@ class TestRevokeTokenEndpoint:
         mock_query.filter.return_value.first.return_value = None
         mock_db.query.return_value = mock_query
 
-        revoke_token(
-            db=mock_db,
+        TokenService(mock_db).revoke_token(
             token="eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0",
             token_type_hint="access_token",
             client_id=sample_client_id,
@@ -290,8 +284,7 @@ class TestRevokeTokenChainIntegration:
         mock_db.query.return_value = mock_query
         mock_db.commit = MagicMock()
 
-        revoke_token(
-            db=mock_db,
+        TokenService(mock_db).revoke_token(
             token="new_token",
             client_id=sample_client_id,
         )
@@ -352,8 +345,7 @@ class TestRevokeTokenChainIntegration:
         mock_db.query.return_value = mock_query
         mock_db.commit = MagicMock()
 
-        revoke_token(
-            db=mock_db,
+        TokenService(mock_db).revoke_token(
             token="token3",
             client_id=sample_client_id,
         )

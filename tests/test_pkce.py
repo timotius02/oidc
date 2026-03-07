@@ -19,7 +19,7 @@ from sqlalchemy.orm import Session
 from app.oauth.errors import OAuthError
 from app.oauth.models import AuthorizationCode, OAuthClient
 from app.oauth.pkce import verify_s256_code_verifier
-from app.oauth.services.token import exchange_code_for_tokens
+from app.oauth.services.token import TokenService
 
 
 class TestVerifyS256CodeVerifier:
@@ -220,9 +220,9 @@ class TestPKCEValidation:
         mock_db.query.return_value = mock_query
 
         # Verifier too short (42 chars)
+        service = TokenService(mock_db)
         with pytest.raises(OAuthError) as exc:
-            exchange_code_for_tokens(
-                db=mock_db,
+            service.exchange_code_for_tokens(
                 code="test_code",
                 client=client,
                 code_verifier="a" * 42,
@@ -247,9 +247,9 @@ class TestPKCEValidation:
         mock_db.query.return_value = mock_query
 
         # Verifier too long (129 chars)
+        service = TokenService(mock_db)
         with pytest.raises(OAuthError) as exc:
-            exchange_code_for_tokens(
-                db=mock_db,
+            service.exchange_code_for_tokens(
                 code="test_code",
                 client=client,
                 code_verifier="a" * 129,

@@ -26,10 +26,7 @@ from app.oauth.jwt import (
     validate_refresh_token,
 )
 from app.oauth.models import OAuthClient, RefreshToken
-from app.oauth.services.token import (
-    create_refresh_token as service_create_refresh_token,
-)
-from app.oauth.services.token import handle_refresh_token_grant
+from app.oauth.services.token import TokenService
 from app.services.auth import hash_password
 
 # =============================================================================
@@ -146,8 +143,7 @@ class TestRefreshTokenCreation:
         mock_db.commit = MagicMock()
 
         # Create refresh token
-        token = service_create_refresh_token(
-            db=mock_db,
+        token = TokenService(mock_db).create_refresh_token(
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
@@ -171,8 +167,7 @@ class TestRefreshTokenCreation:
         mock_db.commit = MagicMock()
 
         # Create refresh token
-        token = service_create_refresh_token(
-            db=mock_db,
+        token = TokenService(mock_db).create_refresh_token(
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
@@ -199,8 +194,8 @@ class TestRefreshTokenCreation:
         parent_token_id = str(uuid.uuid4())
 
         # Create refresh token with parent
-        token = service_create_refresh_token(
-            db=mock_db,
+        service = TokenService(mock_db)
+        token = service.create_refresh_token(
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
@@ -222,8 +217,8 @@ class TestRefreshTokenCreation:
         mock_db.commit = MagicMock()
 
         # Create refresh token
-        service_create_refresh_token(
-            db=mock_db,
+        service = TokenService(mock_db)
+        service.create_refresh_token(
             user_id=sample_user_id,
             client_id=sample_client_id,
             scope=sample_scope,
@@ -435,7 +430,7 @@ class TestRefreshTokenRotation:
 
         # Mock create_refresh_token to return a known token
         with patch(
-            "app.oauth.services.token.create_refresh_token",
+            "app.oauth.services.token.TokenService.create_refresh_token",
             return_value="new_refresh_token_456",
         ):
             new_token = rotate_refresh_token(mock_db, valid_refresh_token_record)
@@ -468,7 +463,7 @@ class TestRefreshTokenRotation:
 
         # Rotate token
         with patch(
-            "app.oauth.services.token.create_refresh_token",
+            "app.oauth.services.token.TokenService.create_refresh_token",
             return_value="new_refresh_token_456",
         ):
             rotate_refresh_token(mock_db, valid_refresh_token_record)
@@ -502,7 +497,7 @@ class TestRefreshTokenRotation:
 
         # Rotate token
         with patch(
-            "app.oauth.services.token.create_refresh_token",
+            "app.oauth.services.token.TokenService.create_refresh_token",
             return_value="new_refresh_token_456",
         ):
             rotate_refresh_token(mock_db, valid_refresh_token_record)
@@ -537,7 +532,7 @@ class TestRefreshTokenRotation:
 
         # Rotate token
         with patch(
-            "app.oauth.services.token.create_refresh_token",
+            "app.oauth.services.token.TokenService.create_refresh_token",
             return_value="new_refresh_token_456",
         ):
             rotate_refresh_token(mock_db, valid_refresh_token_record)
@@ -1021,8 +1016,7 @@ class TestRefreshTokenGrantEndpoint:
                     "app.oauth.services.token.create_access_token",
                     return_value=("new_access_token", "jti"),
                 ):
-                    result = handle_refresh_token_grant(
-                        db=mock_db,
+                    result = TokenService(mock_db).handle_refresh_token_grant(
                         refresh_token=valid_refresh_token_record.token,
                         client=sample_client,
                         scope=None,
@@ -1046,8 +1040,7 @@ class TestRefreshTokenGrantEndpoint:
         )
 
         with pytest.raises(OAuthError) as exc_info:
-            handle_refresh_token_grant(
-                db=mock_db,
+            TokenService(mock_db).handle_refresh_token_grant(
                 refresh_token=None,
                 client=sample_client,
                 scope=None,
@@ -1074,8 +1067,7 @@ class TestRefreshTokenGrantEndpoint:
             ),
         ):
             with pytest.raises(OAuthError) as exc_info:
-                handle_refresh_token_grant(
-                    db=mock_db,
+                TokenService(mock_db).handle_refresh_token_grant(
                     refresh_token="invalid_token",
                     client=sample_client,
                     scope=None,
@@ -1108,8 +1100,7 @@ class TestRefreshTokenGrantEndpoint:
                     "app.oauth.services.token.create_access_token",
                     return_value=("new_access_token", "jti"),
                 ):
-                    result = handle_refresh_token_grant(
-                        db=mock_db,
+                    result = TokenService(mock_db).handle_refresh_token_grant(
                         refresh_token=valid_refresh_token_record.token,
                         client=sample_client,
                         scope=reduced_scope,
@@ -1137,8 +1128,7 @@ class TestRefreshTokenGrantEndpoint:
             return_value=valid_refresh_token_record,
         ):
             with pytest.raises(OAuthError) as exc_info:
-                handle_refresh_token_grant(
-                    db=mock_db,
+                TokenService(mock_db).handle_refresh_token_grant(
                     refresh_token=valid_refresh_token_record.token,
                     client=sample_client,
                     scope=invalid_scope,
@@ -1168,8 +1158,7 @@ class TestRefreshTokenGrantEndpoint:
                     "app.oauth.services.token.create_access_token",
                     return_value=("new_access_token", "jti"),
                 ):
-                    result = handle_refresh_token_grant(
-                        db=mock_db,
+                    result = TokenService(mock_db).handle_refresh_token_grant(
                         refresh_token=valid_refresh_token_record.token,
                         client=sample_client,
                         scope=None,  # No scope provided
@@ -1209,8 +1198,7 @@ def test_refresh_token_grant_without_redirect_uri_succeeds(
         patch("app.oauth.services.token.rotate_refresh_token", return_value="rotated"),
     ):
         # Call WITHOUT redirect_uri
-        response = handle_refresh_token_grant(
-            db=mock_db,
+        response = TokenService(mock_db).handle_refresh_token_grant(
             refresh_token="valid_refresh_token_123",
             client=sample_client,
             scope=None,

@@ -10,10 +10,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.oauth.models import AuthorizationCode, OAuthClient
-from app.oauth.services.token import (
-    handle_authorization_code_grant,
-    handle_refresh_token_grant,
-)
+from app.oauth.services.token import TokenService
 from app.oauth.utils import create_token_response
 from app.services.auth import hash_password
 
@@ -67,12 +64,11 @@ def test_authorization_code_grant_headers(mock_db):
             return_value=("access_token", "jti"),
         ),
         patch(
-            "app.oauth.services.token.create_refresh_token",
+            "app.oauth.services.token.TokenService.create_refresh_token",
             return_value="refresh_token",
         ),
     ):
-        response = handle_authorization_code_grant(
-            db=mock_db,
+        response = TokenService(mock_db).handle_authorization_code_grant(
             code="test_code",
             client=client,
             redirect_uri="http://localhost/callback",
@@ -125,8 +121,7 @@ def test_refresh_token_grant_headers(mock_db):
             return_value="new_refresh_token",
         ),
     ):
-        response = handle_refresh_token_grant(
-            db=mock_db,
+        response = TokenService(mock_db).handle_refresh_token_grant(
             refresh_token="old_refresh_token",
             client=client,
             scope=None,

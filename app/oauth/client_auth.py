@@ -8,7 +8,7 @@ from app.db import get_db
 from app.oauth.constants import ClientType
 from app.oauth.errors import OAuthError, OAuthErrorCode
 from app.oauth.models import OAuthClient
-from app.oauth.services.client import get_client_by_id
+from app.oauth.services.client import ClientService
 from app.services.auth import verify_password
 
 
@@ -38,7 +38,7 @@ def get_client_credentials(
 
 
 def authenticate_client(
-    db: Session,
+    client_service: ClientService,
     client_id: str,
     client_secret: Optional[str] = None,
 ) -> OAuthClient:
@@ -56,7 +56,7 @@ def authenticate_client(
     Raises:
         OAuthError if authentication fails
     """
-    client = get_client_by_id(db, client_id)
+    client = client_service.get_client_by_id(client_id)
 
     if not client:
         raise OAuthError(
@@ -90,6 +90,7 @@ def authenticate_client(
 async def get_authenticated_client(
     request: Request,
     db: Session = Depends(get_db),
+    client_service: ClientService = Depends(ClientService),
 ) -> OAuthClient:
     """
     FastAPI dependency to authenticate an OAuth client.
@@ -113,7 +114,7 @@ async def get_authenticated_client(
         )
 
     try:
-        return authenticate_client(db, client_id, client_secret)
+        return authenticate_client(client_service, client_id, client_secret)
     except OAuthError as e:
         # Standardize 401 response and add WWW-Authenticate header
         if e.error_code == OAuthErrorCode.INVALID_CLIENT:
