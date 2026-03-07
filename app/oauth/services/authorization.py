@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from app.config import settings
 from app.db import get_db
+from app.oauth.constants import CodeChallengeMethod, ResponseType
 from app.oauth.errors import OAuthError, OAuthErrorCode
 from app.oauth.models import AuthorizationCode, OAuthClient
 from app.oauth.services.client import ClientService
@@ -46,10 +47,10 @@ class AuthorizationService:
     def validate_authorization_request(
         self,
         client: OAuthClient,
-        response_type: Optional[str],
+        response_type: Optional[ResponseType],
         scope: Optional[str],
         code_challenge: Optional[str],
-        code_challenge_method: Optional[str],
+        code_challenge_method: Optional[CodeChallengeMethod],
     ) -> str:
         """
         Validate strictly OAuth-related parameters for authorization.
@@ -74,7 +75,7 @@ class AuthorizationService:
                 description="Response_type is required",
             )
 
-        if response_type != "code":
+        if response_type != ResponseType.CODE:
             raise OAuthError(
                 error_code=OAuthErrorCode.UNSUPPORTED_RESPONSE_TYPE,
                 description="Only 'code' response type is supported",
@@ -87,7 +88,7 @@ class AuthorizationService:
                 description="Code_challenge is required",
             )
 
-        if code_challenge_method != "S256":
+        if code_challenge_method != CodeChallengeMethod.S256:
             raise OAuthError(
                 error_code=OAuthErrorCode.INVALID_REQUEST,
                 description="Code_challenge_method must be 'S256'",
@@ -132,7 +133,7 @@ class AuthorizationService:
         redirect_uri: str,
         scope: str,
         code_challenge: Optional[str] = None,
-        code_challenge_method: Optional[str] = None,
+        code_challenge_method: Optional[CodeChallengeMethod] = None,
         nonce: Optional[str] = None,
     ) -> str:
         """

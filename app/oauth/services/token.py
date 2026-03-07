@@ -17,6 +17,7 @@ from app.oauth.jwt import (
 )
 from app.oauth.models import AuthorizationCode, OAuthClient, RefreshToken
 from app.oauth.pkce import verify_s256_code_verifier
+from app.oauth.schemas import TokenRequest
 from app.oauth.utils import create_token_response
 
 
@@ -173,14 +174,11 @@ class TokenService:
 
     def handle_authorization_code_grant(
         self,
-        code: Optional[str],
+        request_data: TokenRequest,
         client: OAuthClient,
-        redirect_uri: Optional[str],
-        code_verifier: Optional[str],
-        scope: Optional[str],
     ):
         """Handle authorization_code grant type."""
-        if not code:
+        if not request_data.code:
             raise OAuthError(
                 error_code=OAuthErrorCode.INVALID_REQUEST,
                 description="Missing required parameter: code",
@@ -189,10 +187,10 @@ class TokenService:
         # Exchange code for tokens
         access_token, id_token, refresh_token, granted_scope = (
             self.exchange_code_for_tokens(
-                code=code,
+                code=request_data.code,
                 client=client,
-                redirect_uri=redirect_uri,
-                code_verifier=code_verifier,
+                redirect_uri=request_data.redirect_uri,
+                code_verifier=request_data.code_verifier,
             )
         )
 
@@ -211,14 +209,13 @@ class TokenService:
 
     def handle_refresh_token_grant(
         self,
-        refresh_token: Optional[str],
+        request_data: TokenRequest,
         client: OAuthClient,
-        scope: Optional[str],
     ):
         """
         Handle refresh_token grant type per RFC 6749 §6.
         """
-        if not refresh_token:
+        if not request_data.refresh_token:
             raise OAuthError(
                 error_code=OAuthErrorCode.INVALID_REQUEST,
                 description="Missing required parameter: refresh_token",
@@ -227,20 +224,20 @@ class TokenService:
         # Validate refresh token
         token_record = validate_refresh_token(
             db=self.db,
-            token=refresh_token,
+            token=request_data.refresh_token,
             client_id=client.client_id,
         )
 
         # Handle scope - must be subset of original scope
-        if scope:
+        if request_data.scope:
             original_scopes = set(token_record.scope.split())
-            requested_scopes = set(scope.split())
+            requested_scopes = set(request_data.scope.split())
             if not requested_scopes.issubset(original_scopes):
                 raise OAuthError(
                     error_code=OAuthErrorCode.INVALID_SCOPE,
                     description="Requested scope exceeds original grant",
                 )
-            final_scope = scope
+            final_scope = request_data.scope
         else:
             final_scope = token_record.scope
 

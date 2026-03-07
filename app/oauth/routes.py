@@ -1,4 +1,6 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
@@ -166,10 +168,7 @@ def approve_consent(
     Handle user approval of authorization request.
     Creates an authorization code and redirects back to the client.
     """
-    # Validate CSRF token
-    if not validate_csrf_token(request, csrf_token):
-        raise HTTPException(403, "Invalid CSRF token")
-
+    # Extract params and user
     params = request.session.get("authorize_params")
     user = get_current_user(request, db)
 
@@ -229,7 +228,7 @@ def deny_consent(
 @router.post("/token")
 def token(
     request: Request,
-    request_data: TokenRequest = Depends(TokenRequest.as_form),
+    request_data: Annotated[TokenRequest, Form()],
     client: OAuthClient = Depends(get_authenticated_client),
     token_service: TokenService = Depends(TokenService),
 ):
@@ -247,17 +246,13 @@ def token(
     """
     if request_data.grant_type == GrantType.AUTHORIZATION_CODE:
         return token_service.handle_authorization_code_grant(
-            code=request_data.code,
+            request_data=request_data,
             client=client,
-            redirect_uri=request_data.redirect_uri,
-            code_verifier=request_data.code_verifier,
-            scope=request_data.scope,
         )
     elif request_data.grant_type == GrantType.REFRESH_TOKEN:
         return token_service.handle_refresh_token_grant(
-            refresh_token=request_data.refresh_token,
+            request_data=request_data,
             client=client,
-            scope=request_data.scope,
         )
 
     raise OAuthError(
@@ -268,7 +263,7 @@ def token(
 
 @router.post("/revoke")
 def revoke(
-    request_data: RevocationRequest = Depends(RevocationRequest.as_form),
+    request_data: Annotated[RevocationRequest, Form()],
     client: OAuthClient = Depends(get_authenticated_client),
     token_service: TokenService = Depends(TokenService),
 ):

@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy.orm import Session
 
 from app.oauth.models import AuthorizationCode, OAuthClient
+from app.oauth.schemas import TokenRequest
 from app.oauth.services.token import TokenService
 from app.oauth.utils import create_token_response
 from app.services.auth import hash_password
@@ -69,11 +70,12 @@ def test_authorization_code_grant_headers(mock_db):
         ),
     ):
         response = TokenService(mock_db).handle_authorization_code_grant(
-            code="test_code",
+            request_data=TokenRequest(
+                grant_type="authorization_code",
+                code="test_code",
+                redirect_uri="http://localhost/callback",
+            ),
             client=client,
-            redirect_uri="http://localhost/callback",
-            code_verifier=None,
-            scope=None,
         )
 
     assert response.headers["Cache-Control"] == "no-store"
@@ -122,9 +124,11 @@ def test_refresh_token_grant_headers(mock_db):
         ),
     ):
         response = TokenService(mock_db).handle_refresh_token_grant(
-            refresh_token="old_refresh_token",
+            request_data=TokenRequest(
+                grant_type="refresh_token",
+                refresh_token="old_refresh_token",
+            ),
             client=client,
-            scope=None,
         )
 
     assert response.headers["Cache-Control"] == "no-store"

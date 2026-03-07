@@ -26,6 +26,7 @@ from app.oauth.jwt import (
     validate_refresh_token,
 )
 from app.oauth.models import OAuthClient, RefreshToken
+from app.oauth.schemas import TokenRequest
 from app.oauth.services.token import TokenService
 from app.services.auth import hash_password
 
@@ -1017,9 +1018,11 @@ class TestRefreshTokenGrantEndpoint:
                     return_value=("new_access_token", "jti"),
                 ):
                     result = TokenService(mock_db).handle_refresh_token_grant(
-                        refresh_token=valid_refresh_token_record.token,
+                        request_data=TokenRequest(
+                            grant_type="refresh_token",
+                            refresh_token=valid_refresh_token_record.token,
+                        ),
                         client=sample_client,
-                        scope=None,
                     )
 
         # Verify response structure
@@ -1041,9 +1044,11 @@ class TestRefreshTokenGrantEndpoint:
 
         with pytest.raises(OAuthError) as exc_info:
             TokenService(mock_db).handle_refresh_token_grant(
-                refresh_token=None,
+                request_data=TokenRequest(
+                    grant_type="refresh_token",
+                    refresh_token=None,
+                ),
                 client=sample_client,
-                scope=None,
             )
 
         assert exc_info.value.error_code == OAuthErrorCode.INVALID_REQUEST
@@ -1068,9 +1073,11 @@ class TestRefreshTokenGrantEndpoint:
         ):
             with pytest.raises(OAuthError) as exc_info:
                 TokenService(mock_db).handle_refresh_token_grant(
-                    refresh_token="invalid_token",
+                    request_data=TokenRequest(
+                        grant_type="refresh_token",
+                        refresh_token="invalid_token",
+                    ),
                     client=sample_client,
-                    scope=None,
                 )
 
         assert exc_info.value.error_code == OAuthErrorCode.INVALID_GRANT
@@ -1101,9 +1108,12 @@ class TestRefreshTokenGrantEndpoint:
                     return_value=("new_access_token", "jti"),
                 ):
                     result = TokenService(mock_db).handle_refresh_token_grant(
-                        refresh_token=valid_refresh_token_record.token,
+                        request_data=TokenRequest(
+                            grant_type="refresh_token",
+                            refresh_token=valid_refresh_token_record.token,
+                            scope=reduced_scope,
+                        ),
                         client=sample_client,
-                        scope=reduced_scope,
                     )
 
         # Verify reduced scope is returned
@@ -1129,9 +1139,12 @@ class TestRefreshTokenGrantEndpoint:
         ):
             with pytest.raises(OAuthError) as exc_info:
                 TokenService(mock_db).handle_refresh_token_grant(
-                    refresh_token=valid_refresh_token_record.token,
+                    request_data=TokenRequest(
+                        grant_type="refresh_token",
+                        refresh_token=valid_refresh_token_record.token,
+                        scope=invalid_scope,
+                    ),
                     client=sample_client,
-                    scope=invalid_scope,
                 )
 
         assert exc_info.value.error_code == OAuthErrorCode.INVALID_SCOPE
@@ -1159,9 +1172,12 @@ class TestRefreshTokenGrantEndpoint:
                     return_value=("new_access_token", "jti"),
                 ):
                     result = TokenService(mock_db).handle_refresh_token_grant(
-                        refresh_token=valid_refresh_token_record.token,
+                        request_data=TokenRequest(
+                            grant_type="refresh_token",
+                            refresh_token=valid_refresh_token_record.token,
+                            scope=None,  # No scope provided
+                        ),
                         client=sample_client,
-                        scope=None,  # No scope provided
                     )
 
         # Verify original scope is used
@@ -1199,9 +1215,11 @@ def test_refresh_token_grant_without_redirect_uri_succeeds(
     ):
         # Call WITHOUT redirect_uri
         response = TokenService(mock_db).handle_refresh_token_grant(
-            refresh_token="valid_refresh_token_123",
+            request_data=TokenRequest(
+                grant_type="refresh_token",
+                refresh_token=valid_refresh_token_record.token,
+            ),
             client=sample_client,
-            scope=None,
         )
 
     assert response.status_code == 200

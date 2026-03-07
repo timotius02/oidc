@@ -17,6 +17,7 @@ from app.db import Base, get_db
 from app.main import app
 from app.oauth.errors import OAuthError
 from app.oauth.models import AuthorizationCode, OAuthClient
+from app.oauth.schemas import TokenRequest
 from app.oauth.services.token import TokenService
 from app.services.auth import hash_password
 
@@ -66,11 +67,12 @@ def test_auth_code_grant_without_redirect_uri_succeeds_if_missing_in_auth_reques
     ):
         # Call WITHOUT redirect_uri
         response = service.handle_authorization_code_grant(
-            code="test_code",
+            request_data=TokenRequest(
+                grant_type="authorization_code",
+                code="test_code",
+                redirect_uri=None,
+            ),
             client=client,
-            redirect_uri=None,
-            code_verifier=None,
-            scope=None,
         )
 
     assert response.status_code == 200
@@ -104,11 +106,12 @@ def test_auth_code_grant_fails_without_redirect_uri_if_present_in_auth_request(m
     service = TokenService(mock_db)
     with pytest.raises(OAuthError) as exc:
         service.handle_authorization_code_grant(
-            code="test_code",
+            request_data=TokenRequest(
+                grant_type="authorization_code",
+                code="test_code",
+                redirect_uri=None,  # Missing!
+            ),
             client=client,
-            redirect_uri=None,  # Missing!
-            code_verifier=None,
-            scope=None,
         )
 
     assert "Missing required parameter: redirect_uri" in str(exc.value.description)

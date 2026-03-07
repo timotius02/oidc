@@ -229,7 +229,7 @@ class TestPKCEValidation:
                 redirect_uri="http://localhost",
             )
         assert exc.value.error_code.value == "invalid_grant"
-        assert "43-128" in exc.value.description
+        assert "between 43 and 128 characters" in exc.value.description
 
     def test_code_verifier_length_too_long(self, mock_db):
         """RFC 7636 §4.1: code_verifier MUST be at most 128 characters."""
@@ -256,4 +256,4 @@ class TestPKCEValidation:
                 redirect_uri="http://localhost",
             )
         assert exc.value.error_code.value == "invalid_grant"
-        assert "43-128" in exc.value.description
+        assert "between 43 and 128 characters" in exc.value.description
