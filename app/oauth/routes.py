@@ -254,6 +254,11 @@ def token(
             request_data=request_data,
             client=client,
         )
+    elif request_data.grant_type == GrantType.CLIENT_CREDENTIALS:
+        return token_service.handle_client_credentials_grant(
+            request_data=request_data,
+            client=client,
+        )
 
     raise OAuthError(
         error_code=OAuthErrorCode.UNSUPPORTED_GRANT_TYPE,

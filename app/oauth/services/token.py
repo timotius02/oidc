@@ -261,6 +261,49 @@ class TokenService:
             }
         )
 
+    def handle_client_credentials_grant(
+        self,
+        request_data: TokenRequest,
+        client: OAuthClient,
+    ):
+        """
+        Handle client_credentials grant type per RFC 6749 §4.4.
+        """
+        if client.client_type != "confidential":
+            raise OAuthError(
+                error_code=OAuthErrorCode.UNAUTHORIZED_CLIENT,
+                description="Client credentials grant is only for confidential clients",
+            )
+
+        # Handle scope - must be subset of client's allowed scopes
+        if request_data.scope:
+            allowed_scopes = set((client.scopes or "").split())
+            requested_scopes = set(request_data.scope.split())
+            if not requested_scopes.issubset(allowed_scopes):
+                raise OAuthError(
+                    error_code=OAuthErrorCode.INVALID_SCOPE,
+                    description="Requested scope exceeds client's allowed scopes",
+                )
+            final_scope = request_data.scope
+        else:
+            final_scope = client.scopes or ""
+
+        # Create access token (subject is the client_id)
+        access_token, _ = create_access_token(
+            subject=client.client_id,
+            audience=client.client_id,
+            scope=final_scope,
+        )
+
+        return create_token_response(
+            content={
+                "access_token": access_token,
+                "token_type": "bearer",
+                "expires_in": settings.ACCESS_TOKEN_EXPIRE_SECONDS,
+                "scope": final_scope,
+            }
+        )
+
     def revoke_token(
         self,
         token: str,
