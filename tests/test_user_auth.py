@@ -85,35 +85,88 @@ def test_login_page_get(client):
 
 
 def test_login_flow_success(client, user_service):
-    """Test successful login redirect."""
+    """Test successful login redirect with CSRF."""
     email = "login@example.com"
+    password = "password123"
+    user_service.create_user(email, password)
+
+    # 1. Get the login page to get the CSRF token
+    get_response = client.get("/auth/login")
+    assert get_response.status_code == 200
+
+    # Simple way to extract CSRF token from HTML
+    import re
+
+    match = re.search(r'name="csrf_token" value="([^"]+)"', get_response.text)
+    assert match is not None
+    csrf_token = match.group(1)
+
+    # 2. Post with the token
+    response = client.post(
+        "/auth/login",
+        data={
+            "email": email,
+            "password": password,
+            "next": "/custom-next",
+            "csrf_token": csrf_token,
+        },
+        follow_redirects=False,
+    )
+
+    assert response.status_code == 302, response.json()
+    assert response.headers["location"] == "/custom-next"
+
+
+def test_login_flow_csrf_failure(client, user_service):
+    """Test login fails without a valid CSRF token."""
+    email = "csrf_fail@example.com"
     password = "password123"
     user_service.create_user(email, password)
 
     response = client.post(
         "/auth/login",
-        data={"email": email, "password": password, "next": "/custom-next"},
+        data={
+            "email": email,
+            "password": password,
+            "next": "/",
+            "csrf_token": "invalid_token",
+        },
         follow_redirects=False,
     )
 
-    assert response.status_code == 302
-    assert response.headers["location"] == "/custom-next"
+    assert response.status_code == 403
+    assert "CSRF token validation failed" in response.json()["detail"]
 
 
-def test_login_flow_failure(client):
-    """Test login failure re-renders the page with an error."""
+def test_login_flow_failure(client, user_service):
+    """Test login failure re-renders the page with an error and new CSRF."""
     email = "wrong@example.com"
     password = "wrongpassword"
+    user_service.create_user(email, "correctpassword")
 
+    # 1. Get CSRF
+    get_response = client.get("/auth/login")
+    import re
+
+    csrf_token = re.search(
+        r'name="csrf_token" value="([^"]+)"', get_response.text
+    ).group(1)
+
+    # 2. Post wrong credentials
     response = client.post(
         "/auth/login",
-        data={"email": email, "password": password, "next": "/"},
+        data={
+            "email": email,
+            "password": password,
+            "next": "/",
+            "csrf_token": csrf_token,
+        },
         follow_redirects=False,
     )
 
-    assert response.status_code == 200  # Should re-render the page
+    assert response.status_code == 200, response.json()
     assert "Invalid email or password" in response.text
-    assert "Welcome Back" in response.text
+    assert 'name="csrf_token"' in response.text  # New token should be present
 
 
 def test_register_flow_json(client, db_session):

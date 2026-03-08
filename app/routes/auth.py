@@ -4,7 +4,8 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.params import Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from app.schemas.user import UserCreate
+from app.schemas.user import UserCreate, UserLogin
+from app.security.csrf import generate_csrf_token, verify_csrf
 from app.services.auth import UserService
 from app.templates_config import templates
 
@@ -27,10 +28,11 @@ def register(
 
 @router.get("/login", response_class=HTMLResponse)
 def login_page(request: Request, next: str = Query("/")):
+    csrf_token = generate_csrf_token(request)
     return templates.TemplateResponse(
         request,
         "login.html",
-        {"next": next},
+        {"next": next, "csrf_token": csrf_token},
     )
 
 
@@ -41,17 +43,22 @@ def login(
     password: Annotated[str, Form()],
     user_service: Annotated[UserService, Depends(UserService)],
     next: Annotated[str, Form()] = "/",
+    _: None = Depends(verify_csrf),
 ):
-    user = user_service.authenticate_user(email, password)
+    # Validate via schema (optional but good for consistency)
+    data = UserLogin(email=email, password=password)
+    user = user_service.authenticate_user(data.email, data.password)
 
     if not user:
-        # Re-render login page with error
+        # Re-render login page with error (and new CSRF token)
+        csrf_token = generate_csrf_token(request)
         return templates.TemplateResponse(
             request,
             "login.html",
             {
                 "next": next,
                 "error": "Invalid email or password",
+                "csrf_token": csrf_token,
             },
         )
 
