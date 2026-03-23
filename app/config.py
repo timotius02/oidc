@@ -17,11 +17,17 @@ class Settings(BaseSettings):
     CODE_EXPIRY_SECONDS: int = 600
 
     # Current signing key (active)
+    # Option 1: Key content from environment
+    PRIVATE_KEY_PEM: str = ""
+    PUBLIC_KEY_PEM: str = ""
+    # Option 2: Key file paths (fallback for development)
     PRIVATE_KEY_PATH: str = "private.pem"
     PUBLIC_KEY_PATH: str = "public.pem"
     CURRENT_KEY_ID: str = "current-key-1"
 
     # Next key for rotation (optional - leave empty if not using dual keys)
+    NEXT_PRIVATE_KEY_PEM: str = ""
+    NEXT_PUBLIC_KEY_PEM: str = ""
     NEXT_PRIVATE_KEY_PATH: str = "private-next.pem"
     NEXT_PUBLIC_KEY_PATH: str = "public-next.pem"
     NEXT_KEY_ID: str = "next-key-1"

@@ -14,12 +14,32 @@ from ..config import settings
 
 
 class RSAKey:
-    def __init__(self, private_path: str, public_path: str, kid: str):
+    def __init__(
+        self,
+        kid: str,
+        private_key: str = "",
+        public_key: str = "",
+        private_path: str = "",
+        public_path: str = "",
+    ):
         self.kid = kid
-        with open(private_path) as f:
-            self.private_key = f.read()
-        with open(public_path) as f:
-            self.public_key = f.read()
+        # Prefer PEM content from environment over file paths
+        if private_key:
+            self.private_key = private_key
+        elif private_path:
+            with open(private_path) as f:
+                self.private_key = f.read()
+        else:
+            raise ValueError("Either private_key or private_path must be provided")
+
+        if public_key:
+            self.public_key = public_key
+        elif public_path:
+            with open(public_path) as f:
+                self.public_key = f.read()
+        else:
+            raise ValueError("Either public_key or public_path must be provided")
+
         self._public_key_obj = None
 
     @property
@@ -52,22 +72,26 @@ class RSAKey:
         }
 
 
-# Load current (signing) key
+# Load current (signing) key - prefer PEM content from environment over file paths
 CURRENT_KEY = RSAKey(
+    kid=settings.CURRENT_KEY_ID,
+    private_key=settings.PRIVATE_KEY_PEM,
+    public_key=settings.PUBLIC_KEY_PEM,
     private_path=settings.PRIVATE_KEY_PATH,
     public_path=settings.PUBLIC_KEY_PATH,
-    kid=settings.CURRENT_KEY_ID,
 )
 
-# Load next key (for rotation) if files exist
+# Load next key (for rotation) if PEM content or file exists
 try:
     NEXT_KEY = RSAKey(
+        kid=settings.NEXT_KEY_ID,
+        private_key=settings.NEXT_PRIVATE_KEY_PEM,
+        public_key=settings.NEXT_PUBLIC_KEY_PEM,
         private_path=settings.NEXT_PRIVATE_KEY_PATH,
         public_path=settings.NEXT_PUBLIC_KEY_PATH,
-        kid=settings.NEXT_KEY_ID,
     )
     KEYS = [CURRENT_KEY, NEXT_KEY]
-except FileNotFoundError:
+except (FileNotFoundError, ValueError):
     KEYS = [CURRENT_KEY]
     NEXT_KEY = None
 
