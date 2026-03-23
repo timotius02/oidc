@@ -5,6 +5,11 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from sqlalchemy.orm import Session
 
 from app.db import get_db
+from app.middleware.logging import (
+    log_consent_action,
+    log_token_issued,
+    log_token_revoked,
+)
 from app.oauth.client_auth import get_authenticated_client
 from app.oauth.constants import GrantType
 from app.oauth.errors import (
@@ -188,6 +193,11 @@ def approve_consent(
         nonce=params.get("nonce"),
     )
 
+    request_id = getattr(request.state, "request_id", None)
+    log_consent_action(
+        str(user.id), params["client_id"], "approved", params["scope"], request_id
+    )
+
     # Clear session params
     request.session.pop("authorize_params", None)
 
@@ -202,6 +212,7 @@ def approve_consent(
 @router.post("/consent/deny", dependencies=[Depends(verify_csrf)])
 def deny_consent(
     request: Request,
+    db: Session = Depends(get_db),
 ):
     """
     Handle user denial of authorization request.
@@ -213,9 +224,22 @@ def deny_consent(
     if not params:
         raise HTTPException(400, "Missing authorization request")
 
+    # Get user for logging
+    user = get_current_user(request, db)
+
     # Clear CSRF token and session params
     request.session.pop("csrf_token", None)
     request.session.pop("authorize_params", None)
+
+    request_id = getattr(request.state, "request_id", None)
+    if user:
+        log_consent_action(
+            str(user.id),
+            params["client_id"],
+            "denied",
+            params.get("scope", ""),
+            request_id,
+        )
 
     return create_authorization_error_response(
         redirect_uri=params["redirect_uri"],
@@ -244,21 +268,47 @@ def token(
     - refresh_token grant (RFC 6749 §6)
 
     """
+    request_id = getattr(request.state, "request_id", None)
+
     if request_data.grant_type == GrantType.AUTHORIZATION_CODE:
-        return token_service.handle_authorization_code_grant(
+        result = token_service.handle_authorization_code_grant(
             request_data=request_data,
             client=client,
         )
+        log_token_issued(
+            "authorization_code",
+            client.client_id,
+            None,
+            request_data.scope or "",
+            request_id,
+        )
+        return result
     elif request_data.grant_type == GrantType.REFRESH_TOKEN:
-        return token_service.handle_refresh_token_grant(
+        result = token_service.handle_refresh_token_grant(
             request_data=request_data,
             client=client,
         )
+        log_token_issued(
+            "refresh_token",
+            client.client_id,
+            None,
+            request_data.scope or "",
+            request_id,
+        )
+        return result
     elif request_data.grant_type == GrantType.CLIENT_CREDENTIALS:
-        return token_service.handle_client_credentials_grant(
+        result = token_service.handle_client_credentials_grant(
             request_data=request_data,
             client=client,
         )
+        log_token_issued(
+            "client_credentials",
+            client.client_id,
+            None,
+            request_data.scope or "",
+            request_id,
+        )
+        return result
 
     raise OAuthError(
         error_code=OAuthErrorCode.UNSUPPORTED_GRANT_TYPE,
@@ -268,6 +318,7 @@ def token(
 
 @router.post("/revoke")
 def revoke(
+    request: Request,
     request_data: Annotated[RevocationRequest, Form()],
     client: OAuthClient = Depends(get_authenticated_client),
     token_service: TokenService = Depends(TokenService),
@@ -284,9 +335,18 @@ def revoke(
     guidance of allowing access tokens to expire naturally without revocation due to
     their short lifespan and stateless nature.
     """
+    request_id = getattr(request.state, "request_id", None)
+
     # Attempt to revoke the token (access or refresh)
     token_service.revoke_token(
         request_data.token, request_data.token_type_hint, client.client_id
+    )
+
+    log_token_revoked(
+        client.client_id,
+        request_data.token_type_hint or "unknown",
+        "user_revoked",
+        request_id,
     )
 
     # Per RFC 7009 Section 2.2, respond with HTTP 200 even if the token is invalid

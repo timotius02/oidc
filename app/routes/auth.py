@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.params import Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 
+from app.middleware.logging import log_auth_failure, log_auth_success
 from app.schemas.user import UserCreate, UserLogin
 from app.security.csrf import generate_csrf_token, verify_csrf
 from app.services.auth import UserService
@@ -45,11 +46,14 @@ def login(
     next: Annotated[str, Form()] = "/",
     _: None = Depends(verify_csrf),
 ):
+    request_id = getattr(request.state, "request_id", None)
+
     # Validate via schema (optional but good for consistency)
     data = UserLogin(email=email, password=password)
     user = user_service.authenticate_user(data.email, data.password)
 
     if not user:
+        log_auth_failure(email, "invalid_credentials", request_id)
         # Re-render login page with error (and new CSRF token)
         csrf_token = generate_csrf_token(request)
         return templates.TemplateResponse(
@@ -62,6 +66,7 @@ def login(
             },
         )
 
+    log_auth_success(str(user.id), user.email, request_id)
     request.session["user_id"] = str(user.id)
 
     # Redirect to the next page (authorize or default)
