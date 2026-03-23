@@ -1,3 +1,5 @@
+import uuid
+
 from fastapi import Request
 from fastapi.responses import JSONResponse
 from sqlalchemy.orm import Session
@@ -10,7 +12,13 @@ def get_current_user(request: Request, db: Session):
     if not user_id:
         return None
 
-    return db.query(User).filter(User.id == user_id).first()
+    # Convert string to UUID for proper database comparison
+    try:
+        user_uuid = uuid.UUID(user_id)
+    except (ValueError, AttributeError):
+        return None
+
+    return db.query(User).filter(User.id == user_uuid).first()
 
 
 def create_token_response(content: dict) -> JSONResponse:

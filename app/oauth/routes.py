@@ -1,12 +1,14 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Form, HTTPException, Request
+from fastapi import APIRouter, Depends, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
+from jose import jwt
 from sqlalchemy.orm import Session
 
 from app.db import get_db
 from app.middleware.logging import (
     log_consent_action,
+    log_logout,
     log_token_issued,
     log_token_revoked,
 )
@@ -388,3 +390,79 @@ def userinfo(
         )
 
     return claims
+
+
+@router.get("/end_session")
+def end_session(
+    request: Request,
+    id_token_hint: str | None = Query(None),
+    post_logout_redirect_uri: str | None = Query(None),
+    state: str | None = Query(None),
+    client_id: str | None = Query(None),
+    db: Session = Depends(get_db),
+    client_service: ClientService = Depends(ClientService),
+):
+    """
+    OpenID Connect RP-Initiated Logout Endpoint.
+
+    Per OpenID Connect RP-Initiated Logout 1.0:
+    - Accepts id_token_hint to identify the user session
+    - Accepts post_logout_redirect_uri for redirection after logout
+    - Validates the post_logout_redirect_uri against client registration
+    - Invalidates the user session
+    - Redirects to the post_logout_redirect_uri with state parameter
+
+    If no valid session exists, still redirects to the post_logout_redirect_uri
+    (or shows a logout confirmation page if no redirect is provided).
+    """
+    request_id = getattr(request.state, "request_id", None)
+    resolved_client_id = client_id
+
+    # Extract client_id from id_token_hint if not provided
+    if id_token_hint and not resolved_client_id:
+        try:
+            unverified = jwt.get_unverified_claims(id_token_hint)
+            resolved_client_id = unverified.get("aud")
+        except Exception:
+            pass  # Invalid token hint is acceptable, continue without it
+
+    # Validate post_logout_redirect_uri if provided
+    # Per OIDC spec, post_logout_redirect_uri must be pre-registered
+    # If we can't validate (no client), don't redirect
+    if post_logout_redirect_uri:
+        if not resolved_client_id:
+            post_logout_redirect_uri = None  # Can't validate without client
+        else:
+            try:
+                client = client_service.get_client_by_id(resolved_client_id)
+                if client and client.post_logout_redirect_uris:
+                    allowed_uris = client.post_logout_redirect_uris.split()
+                    if post_logout_redirect_uri not in allowed_uris:
+                        post_logout_redirect_uri = None  # Invalid URI, don't redirect
+                else:
+                    post_logout_redirect_uri = None  # No URIs registered
+            except Exception:
+                post_logout_redirect_uri = None
+
+    # Get current user and log them out
+    user = get_current_user(request, db)
+    if user:
+        log_logout(str(user.id), resolved_client_id, request_id)
+        # Clear all session data
+        request.session.clear()
+
+    # Redirect to post_logout_redirect_uri with state, or show logout page
+    if post_logout_redirect_uri:
+        redirect_url = post_logout_redirect_uri
+        if state:
+            redirect_url += (
+                f"{'&' if '?' in post_logout_redirect_uri else '?'}state={state}"
+            )
+        return RedirectResponse(redirect_url, status_code=302)
+
+    # No redirect URI provided, show a logout confirmation page
+    return templates.TemplateResponse(
+        request,
+        "logout.html",
+        {"state": state},
+    )

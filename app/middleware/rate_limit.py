@@ -77,6 +77,11 @@ class RateLimitStore:
 _rate_limit_store = RateLimitStore()
 
 
+def clear_rate_limit_store() -> None:
+    """Clear all rate limit data. Useful for testing."""
+    _rate_limit_store._buckets.clear()
+
+
 def get_client_ip(request: Request) -> str:
     """Extract client IP, respecting X-Forwarded-For for proxied requests."""
     forwarded = request.headers.get("X-Forwarded-For")

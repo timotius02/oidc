@@ -34,6 +34,10 @@ class OAuthClient(Base):
         String, nullable=False, default="confidential"
     )
 
+    post_logout_redirect_uris: Mapped[Optional[str]] = mapped_column(
+        Text, nullable=True
+    )  # Space-separated list of allowed post-logout redirect URIs
+
 
 class AuthorizationCode(Base):
     __tablename__ = "authorization_codes"

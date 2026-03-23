@@ -54,6 +54,7 @@ def openid_configuration():
         "userinfo_endpoint": f"{issuer}/oauth/userinfo",
         "jwks_uri": f"{issuer}/.well-known/jwks.json",
         "revocation_endpoint": f"{issuer}/oauth/revoke",
+        "end_session_endpoint": f"{issuer}/oauth/end_session",
         "grant_types_supported": [
             "authorization_code",
             "refresh_token",

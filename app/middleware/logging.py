@@ -130,3 +130,19 @@ def log_security_event(
         details=details,
         request_id=request_id,
     )
+
+
+def log_logout(
+    user_id: str,
+    client_id: str | None = None,
+    request_id: str | None = None,
+) -> None:
+    """Log user logout events."""
+    _json_log(
+        auth_logger,
+        logging.INFO,
+        "logout",
+        user_id=user_id,
+        client_id=client_id,
+        request_id=request_id,
+    )
