@@ -4,10 +4,10 @@ from fastapi import APIRouter, Depends, Form, HTTPException, Request
 from fastapi.params import Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from app.middleware.logging import log_auth_failure, log_auth_success
 from app.schemas.user import UserCreate, UserLogin
 from app.security.csrf import generate_csrf_token, verify_csrf
 from app.services.auth import UserService
+from app.services.logging import log_auth_failure, log_auth_success
 from app.templates_config import templates
 
 router = APIRouter(prefix="/auth", tags=["auth"])

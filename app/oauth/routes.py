@@ -6,12 +6,6 @@ from jose import jwt
 from sqlalchemy.orm import Session
 
 from app.db import get_db
-from app.middleware.logging import (
-    log_consent_action,
-    log_logout,
-    log_token_issued,
-    log_token_revoked,
-)
 from app.oauth.client_auth import get_authenticated_client
 from app.oauth.constants import GrantType
 from app.oauth.errors import (
@@ -27,6 +21,12 @@ from app.oauth.services.token import TokenService
 from app.oauth.services.userinfo import UserInfoService
 from app.oauth.utils import get_current_user
 from app.security.csrf import generate_csrf_token, verify_csrf
+from app.services.logging import (
+    log_consent_action,
+    log_logout,
+    log_token_issued,
+    log_token_revoked,
+)
 from app.templates_config import templates
 
 router = APIRouter(prefix="/oauth", tags=["oauth"])
