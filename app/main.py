@@ -89,8 +89,11 @@ def openid_configuration():
             "given_name",
             "email",
             "email_verified",
+            "cnf",  # DPoP confirmation key
         ],
         "code_challenge_methods_supported": ["S256"],
+        # DPoP support (RFC 9449)
+        "dpop_signing_alg_values_supported": ["ES256", "RS256"],
         "service_documentation": None,
         "ui_locales_supported": ["en"],
     }

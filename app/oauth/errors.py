@@ -48,6 +48,7 @@ class OAuthErrorCode(str, Enum):
     INVALID_CLIENT = "invalid_client"
     INVALID_GRANT = "invalid_grant"
     UNSUPPORTED_GRANT_TYPE = "unsupported_grant_type"
+    INVALID_DPOP_PROOF = "invalid_dpop_proof"
 
     # RFC 6750 - Bearer Token Usage (UserInfo endpoint)
     INVALID_TOKEN = "invalid_token"

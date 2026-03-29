@@ -265,18 +265,23 @@ def token(
     or rotates a refresh token. Validates client credentials, redirect_uri,
     PKCE code_verifier, and refresh token.
 
+    Supports DPoP (RFC 9449) for token binding when DPoP header is provided.
+
     Supports:
     - authorization_code grant (RFC 6749 §4.1)
     - refresh_token grant (RFC 6749 §6)
 
     """
     request_id = getattr(request.state, "request_id", None)
+    dpop_header = request.headers.get("DPoP")
 
     if request_data.grant_type == GrantType.AUTHORIZATION_CODE:
         result = token_service.handle_authorization_code_grant(
             request_data=request_data,
             client=client,
+            dpop_header=dpop_header,
         )
+        # Check if DPoP was used (token_type will be DPoP)
         log_token_issued(
             "authorization_code",
             client.client_id,
@@ -289,6 +294,7 @@ def token(
         result = token_service.handle_refresh_token_grant(
             request_data=request_data,
             client=client,
+            dpop_header=dpop_header,
         )
         log_token_issued(
             "refresh_token",
@@ -302,6 +308,7 @@ def token(
         result = token_service.handle_client_credentials_grant(
             request_data=request_data,
             client=client,
+            dpop_header=dpop_header,
         )
         log_token_issued(
             "client_credentials",

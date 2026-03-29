@@ -96,13 +96,29 @@ except (FileNotFoundError, ValueError):
     NEXT_KEY = None
 
 
-def create_access_token(subject: str, audience: str, scope: str) -> tuple[str, str]:
+def create_access_token(
+    subject: str,
+    audience: str,
+    scope: str,
+    dpop_public_key: str | dict | None = None,
+) -> tuple[str, str]:
     """
     Create a JWT access token with jti for identification.
+
+    If dpop_public_key is provided, the token will include a cnf claim
+    for DPoP (Demonstrating Proof of Possession) as per RFC 9449.
+
+    Args:
+        subject: The subject (user) identifier
+        audience: The intended audience (client_id)
+        scope: The granted scopes
+        dpop_public_key: Optional JWK for DPoP binding
 
     Returns:
         Tuple of (access_token, jti)
     """
+    from app.oauth.dpop import compute_jwk_thumbprint, load_jwk
+
     now = datetime.now(UTC)
     jti = str(uuid.uuid4())
 
@@ -116,10 +132,23 @@ def create_access_token(subject: str, audience: str, scope: str) -> tuple[str, s
         "jti": jti,
     }
 
+    # Add DPoP confirmation claim if public key provided
+    if dpop_public_key:
+        jwk = load_jwk(dpop_public_key)
+        # Use JWK thumbprint as the confirmation key
+        payload["cnf"] = {
+            "jwk": jwk,
+            "jkt": compute_jwk_thumbprint(jwk),
+        }
+
     headers = {"kid": CURRENT_KEY.kid}
     token = jwt.encode(
-        payload, CURRENT_KEY.private_key, algorithm="RS256", headers=headers
+        payload,
+        CURRENT_KEY.private_key,
+        algorithm="RS256",
+        headers=headers,
     )
+
     return token, jti
 
 

@@ -68,7 +68,8 @@ class TokenService:
         client: OAuthClient,
         redirect_uri: Optional[str] = None,
         code_verifier: Optional[str] = None,
-    ) -> tuple[str, str | None, str, str]:
+        dpop_header: Optional[str] = None,
+    ) -> tuple[str, str | None, str, str, bool]:
         """
         Exchange an authorization code for access token and refresh tokens.
 
@@ -77,9 +78,10 @@ class TokenService:
             client: The OAuthClient object
             redirect_uri: Must match the redirect_uri from authorization request
             code_verifier: PKCE code verifier (required if code_challenge was used)
+            dpop_header: Optional DPoP proof JWT from the request header
 
         Returns:
-            Tuple of (access_token, id_token, refresh_token, granted_scope)
+            Tuple of (access_token, id_token, refresh_token, granted_scope, is_dpop)
 
         Raises:
             OAuthError if code is invalid, expired, or client authentication fails
@@ -142,11 +144,32 @@ class TokenService:
                     description="Invalid code_verifier",
                 )
 
-        # Create access token
+        # Check if DPoP is requested - verify proof and extract public key from it
+        dpop_public_key = None
+        if dpop_header:
+            try:
+                from app.oauth.dpop import verify_dpop_proof
+
+                is_valid, public_jwk = verify_dpop_proof(
+                    proof=dpop_header,
+                    audience=settings.JWT_ISSUER + "/oauth/token",
+                    method="POST",
+                    uri=settings.JWT_ISSUER + "/oauth/token",
+                )
+                if is_valid:
+                    dpop_public_key = public_jwk
+            except Exception as e:
+                raise OAuthError(
+                    error_code=OAuthErrorCode.INVALID_DPOP_PROOF,
+                    description=f"Invalid DPoP proof: {e}",
+                )
+
+        # Create access token (with DPoP binding if client provided valid proof)
         access_token, _ = create_access_token(
             subject=str(auth_code.user_id),
             audience=auth_code.client_id,
             scope=auth_code.scope,
+            dpop_public_key=dpop_public_key,
         )
 
         # Create ID token if openid scope is requested
@@ -170,12 +193,19 @@ class TokenService:
         self.db.delete(auth_code)
         self.db.commit()
 
-        return access_token, id_token, refresh_token, auth_code.scope
+        return (
+            access_token,
+            id_token,
+            refresh_token,
+            auth_code.scope,
+            dpop_public_key is not None,
+        )
 
     def handle_authorization_code_grant(
         self,
         request_data: TokenRequest,
         client: OAuthClient,
+        dpop_header: Optional[str] = None,
     ):
         """Handle authorization_code grant type."""
         if not request_data.code:
@@ -185,18 +215,19 @@ class TokenService:
             )
 
         # Exchange code for tokens
-        access_token, id_token, refresh_token, granted_scope = (
+        access_token, id_token, refresh_token, granted_scope, is_dpop = (
             self.exchange_code_for_tokens(
                 code=request_data.code,
                 client=client,
                 redirect_uri=request_data.redirect_uri,
                 code_verifier=request_data.code_verifier,
+                dpop_header=dpop_header,
             )
         )
 
         response_content = {
             "access_token": access_token,
-            "token_type": "bearer",
+            "token_type": "DPoP" if is_dpop else "bearer",
             "expires_in": settings.ACCESS_TOKEN_EXPIRE_SECONDS,
             "refresh_token": refresh_token,
             "scope": granted_scope,
@@ -211,9 +242,11 @@ class TokenService:
         self,
         request_data: TokenRequest,
         client: OAuthClient,
+        dpop_header: Optional[str] = None,
     ):
         """
         Handle refresh_token grant type per RFC 6749 §6.
+        Per RFC 9449, if DPoP proof is provided, bind tokens to the key.
         """
         if not request_data.refresh_token:
             raise OAuthError(
@@ -241,20 +274,41 @@ class TokenService:
         else:
             final_scope = token_record.scope
 
+        # Verify DPoP proof if provided (RFC 9449 Section 5)
+        dpop_public_key = None
+        if dpop_header:
+            try:
+                from app.oauth.dpop import verify_dpop_proof
+
+                is_valid, public_jwk = verify_dpop_proof(
+                    proof=dpop_header,
+                    audience=settings.JWT_ISSUER + "/oauth/token",
+                    method="POST",
+                    uri=settings.JWT_ISSUER + "/oauth/token",
+                )
+                if is_valid:
+                    dpop_public_key = public_jwk
+            except Exception as e:
+                raise OAuthError(
+                    error_code=OAuthErrorCode.INVALID_DPOP_PROOF,
+                    description=f"Invalid DPoP proof: {e}",
+                )
+
         # Rotate refresh token
         new_refresh_token = rotate_refresh_token(self.db, token_record)
 
-        # Create new access token
+        # Create new access token (with DPoP binding if proof provided)
         access_token, _ = create_access_token(
             subject=str(token_record.user_id),
             audience=client.client_id,
             scope=final_scope,
+            dpop_public_key=dpop_public_key,
         )
 
         return create_token_response(
             content={
                 "access_token": access_token,
-                "token_type": "bearer",
+                "token_type": "DPoP" if dpop_public_key else "bearer",
                 "expires_in": settings.ACCESS_TOKEN_EXPIRE_SECONDS,
                 "refresh_token": new_refresh_token,
                 "scope": final_scope,
@@ -265,6 +319,7 @@ class TokenService:
         self,
         request_data: TokenRequest,
         client: OAuthClient,
+        dpop_header: Optional[str] = None,
     ):
         """
         Handle client_credentials grant type per RFC 6749 §4.4.
