@@ -371,29 +371,45 @@ def userinfo(
     OIDC UserInfo Endpoint per OpenID Connect Core §5.3.
 
     Returns claims about the authenticated user based on granted scopes.
-    Protected by access token (Bearer authentication).
+    Protected by access token (Bearer or DPoP authentication per RFC 9449).
     """
     auth_header = request.headers.get("Authorization")
 
-    if not auth_header or not auth_header.lower().startswith("bearer "):
+    if not auth_header:
+        raise HTTPException(
+            status_code=401,
+            detail="Missing Authorization header",
+            headers={"WWW-Authenticate": 'Bearer realm="userinfo"'},
+        )
+
+    lower = auth_header.lower()
+    if lower.startswith("bearer "):
+        access_token = auth_header[7:]
+    elif lower.startswith("dpop "):
+        access_token = auth_header[5:]
+    else:
         raise HTTPException(
             status_code=401,
             detail="Missing or invalid Authorization header",
             headers={"WWW-Authenticate": 'Bearer realm="userinfo"'},
         )
 
-    access_token = auth_header[7:]  # Remove "Bearer " prefix
+    dpop_header = request.headers.get("DPoP")
 
     try:
-        claims = userinfo_service.get_userinfo_claims(access_token)
+        claims = userinfo_service.get_userinfo_claims(
+            access_token=access_token,
+            dpop_header=dpop_header,
+            method=request.method,
+            uri=str(request.url),
+        )
     except OAuthError as e:
-        # Per RFC 6750, insufficient_scope returns 403, others return 401
         status_code = 403 if e.error_code == OAuthErrorCode.INSUFFICIENT_SCOPE else 401
-        auth_header = f'Bearer realm="userinfo", error="{e.error_code.value}"'
+        www_auth = f'Bearer realm="userinfo", error="{e.error_code.value}"'
         raise HTTPException(
             status_code=status_code,
             detail=e.description,
-            headers={"WWW-Authenticate": auth_header},
+            headers={"WWW-Authenticate": www_auth},
         )
 
     return claims

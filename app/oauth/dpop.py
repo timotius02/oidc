@@ -140,6 +140,8 @@ def verify_dpop_proof_for_resource(
     dpop_header: str,
     access_token: str,
     public_key_jwk: str | dict,
+    method: str = "GET",
+    uri: str = "",
 ) -> bool:
     """
     Verify a DPoP proof for resource server access.
@@ -148,6 +150,8 @@ def verify_dpop_proof_for_resource(
         dpop_header: The DPoP header value from the request
         access_token: The access token being used
         public_key_jwk: The client's public key in JWK format
+        method: HTTP method of the request
+        uri: Full request URI
 
     Returns:
         True if verification succeeds
@@ -188,5 +192,10 @@ def verify_dpop_proof_for_resource(
         now = datetime.now(UTC).timestamp()
         if abs(now - iat) > 60:
             raise jwt.JWTError("DPoP proof timestamp too old")
+
+    if unverified.get("htm") != method:
+        raise jwt.JWTError("HTTP method (htm) mismatch")
+    if uri and unverified.get("htu") != uri:
+        raise jwt.JWTError("HTTP URI (htu) mismatch")
 
     return True

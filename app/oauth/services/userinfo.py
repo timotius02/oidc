@@ -13,18 +13,27 @@ class UserInfoService:
     def __init__(self, db: Session = Depends(get_db)):
         self.db = db
 
-    def get_userinfo_claims(self, access_token: str) -> dict:
+    def get_userinfo_claims(
+        self,
+        access_token: str,
+        dpop_header: str | None = None,
+        method: str = "GET",
+        uri: str = "",
+    ) -> dict:
         """
         Get user claims from UserInfo endpoint.
 
         Args:
-            access_token: Bearer token from Authorization header
+            access_token: Bearer or DPoP-bound token from Authorization header
+            dpop_header: DPoP proof JWT from the DPoP request header, if present
+            method: HTTP method of the request (for DPoP proof validation)
+            uri: Full request URI (for DPoP proof validation)
 
         Returns:
             Dictionary of claims based on granted scopes
 
         Raises:
-            OAuthError: If token is invalid or user not found
+            OAuthError: If invalid token, user not found, or DPoP proof missing/invalid
         """
         from jose import jwt as jose_jwt
 
@@ -50,6 +59,29 @@ class UserInfoService:
                 error_code=OAuthErrorCode.INVALID_GRANT,
                 description="Invalid or expired access token",
             )
+
+        cnf = token_payload.get("cnf")
+        if cnf:
+            if not dpop_header:
+                raise OAuthError(
+                    error_code=OAuthErrorCode.INVALID_GRANT,
+                    description="DPoP proof required for DPoP-bound token",
+                )
+            try:
+                from app.oauth.dpop import verify_dpop_proof_for_resource
+
+                verify_dpop_proof_for_resource(
+                    dpop_header=dpop_header,
+                    access_token=access_token,
+                    public_key_jwk=cnf["jwk"],
+                    method=method,
+                    uri=uri,
+                )
+            except Exception as e:
+                raise OAuthError(
+                    error_code=OAuthErrorCode.INVALID_DPOP_PROOF,
+                    description=f"Invalid DPoP proof: {e}",
+                )
 
         scope = token_payload.get("scope", "")
         granted_scopes = set(scope.split()) if scope else set()
