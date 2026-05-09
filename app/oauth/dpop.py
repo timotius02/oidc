@@ -188,10 +188,11 @@ def verify_dpop_proof_for_resource(
 
     # Verify the timestamp is not too old (max 60 seconds)
     iat = unverified.get("iat")
-    if iat:
-        now = datetime.now(UTC).timestamp()
-        if abs(now - iat) > 60:
-            raise jwt.JWTError("DPoP proof timestamp too old")
+    if not iat:
+        raise jwt.JWTError("DPoP proof missing iat claim")
+    now = datetime.now(UTC).timestamp()
+    if abs(now - iat) > 60:
+        raise jwt.JWTError("DPoP proof timestamp too old")
 
     if unverified.get("htm") != method:
         raise jwt.JWTError("HTTP method (htm) mismatch")
